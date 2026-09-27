@@ -1,5 +1,5 @@
 // Тесты внутреннего читателя ZIP (core/Zip): листинг, сохранённые и deflate-записи,
-// повреждённые архивы, а также интеграция с виртуальной файловой системой (assets.zip).
+// повреждённые архивы, а также интеграция с виртуальной файловой системой (assets.dat).
 #include "crossrender/core/File.h"
 #include "core/Zip.h"
 #include "crossrender/test/Test.h"
@@ -121,10 +121,10 @@ ENG_TEST(Inflate, RejectsGarbage) {
 }
 
 ENG_TEST(FileSystem, ReadsAssetsFromZip) {
-    // Интеграция: assets.zip в корне ассетов отдаёт файлы через обычный VFS-доступ.
+    // Интеграция: assets.dat в корне ассетов отдаёт файлы через обычный VFS-доступ.
     const std::string savedRoot = GetAssetRoot();
     try {
-        const std::string zipPath = test::TempFilePath("assets.zip");
+        const std::string zipPath = test::TempFilePath("assets.dat");
         const std::string rootDir = PathDir(zipPath);
         SetAssetRoot(rootDir);
         ENG_CHECK(WriteBinaryFile(zipPath, kFixtureZip, sizeof(kFixtureZip)));

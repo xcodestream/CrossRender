@@ -83,7 +83,11 @@
       setTimeout(function () { window.CrossRender.onReady(); }, 120);
     },
     onAbort: function (what) { window.CrossRender.onError('aborted: ' + what); },
-    locateFile: function (path) { return path; }
+    // Пакет ассетов переименовывается пост-сборкой в assets.data независимо от
+    // имени таргета (см. CR_WASM_* в CMakeLists.txt).
+    locateFile: function (path) {
+      return path === 'example.data' ? 'assets.data' : path;
+    }
   };
   window.Module = Module;
 

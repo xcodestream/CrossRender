@@ -20,7 +20,7 @@
 #   --no-tests       пропустить набор тестов
 #   --asan           AddressSanitizer + UBSan
 #   --metal          бэкенд слоя совместимости с Metal (сборки macOS/iOS)
-#   --asset-zip      упаковать ассеты игры в assets.zip (нативные платформы)
+#   --asset-zip      упаковать ассеты игры в assets.dat (нативные платформы)
 #   --gzip           .gz-сайдкары для файлов WASM-сборки (wasm/js/data/html)
 #   --brotli         .br-сайдкары для файлов WASM-сборки (wasm/js/data/html)
 #   --jobs N         параллельные задачи сборки (по умолчанию: определённые ядра)
@@ -137,12 +137,12 @@ build_host() {
     log "Build directory: $dir"
 
     if [[ "$RUN_AFTER" == "2" ]]; then
-        local t="$dir/bin/crossrender_tests"
+        local t="$dir/bin/tests"
         [[ -x "$t" ]] || die "test binary not found at $t"
         log "Running tests"
         "$t"
     elif [[ "$RUN_AFTER" == "1" ]]; then
-        local exe="$dir/bin/crossrender_example"
+        local exe="$dir/bin/example"
         [[ -x "$exe" ]] || die "example binary not found at $exe"
         log "Launching the example"
         "$exe" "$@"
@@ -173,9 +173,9 @@ build_wasm() {
     cmake --build "$dir" --parallel "$JOBS"
     if [[ "$WASM_GZIP" == "ON" || "$WASM_BROTLI" == "ON" ]]; then
         log "Serve it with:  python3 tools/serve_wasm.py $dir/bin 8080"
-        log "then open http://localhost:8080/crossrender_example.html  (.gz/.br served with Content-Encoding)"
+        log "then open http://localhost:8080/example.html  (.gz/.br served with Content-Encoding)"
     else
-        log "Serve it with:  (cd $dir/bin && python3 -m http.server 8080)  then open http://localhost:8080/crossrender_example.html"
+        log "Serve it with:  (cd $dir/bin && python3 -m http.server 8080)  then open http://localhost:8080/example.html"
     fi
 }
 
@@ -224,7 +224,7 @@ build_android() {
         -DCR_ASSET_ZIP="$ASSET_ZIP"
     log "Building Android"
     cmake --build "$dir" --parallel "$JOBS"
-    log "Result: $dir/bin/libcrossrender_example.so (wrap with an APK to install)"
+    log "Result: $dir/bin/libexample.so (wrap with an APK to install)"
 }
 
 build_linux() {

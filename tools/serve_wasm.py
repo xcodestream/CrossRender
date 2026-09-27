@@ -85,7 +85,7 @@ def main() -> int:
         print(f"serve_wasm.py: directory not found: {root}", file=sys.stderr)
         return 2
     print(f"Serving {root} at http://localhost:{PORT}/")
-    print(f"Open http://localhost:{PORT}/crossrender_example.html")
+    print(f"Open http://localhost:{PORT}/example.html")
     try:
         ThreadingHTTPServer(("127.0.0.1", PORT), PrecompressedHandler).serve_forever()
     except KeyboardInterrupt:

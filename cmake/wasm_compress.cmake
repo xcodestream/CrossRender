@@ -1,7 +1,7 @@
 # Сжимает результаты WASM-сборки в сайдкары .gz/.br. Вызывается как POST_BUILD
 # шаг примера (см. CMake-флаги CR_WASM_GZIP / CR_WASM_BROTLI). Оригинальные
 # файлы сохраняются: раздача предсжатых копий - забота tools/serve_wasm.py.
-set(_files crossrender_example.js crossrender_example.wasm crossrender_example.data crossrender_example.html)
+set(_files example.js example.wasm assets.data example.html)
 
 foreach(_name ${_files})
     set(_f "${OUTDIR}/${_name}")

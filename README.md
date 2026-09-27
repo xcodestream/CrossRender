@@ -31,24 +31,24 @@ OpenGL. Ни GLFW, ни SDL, ни NanoVG, ни внешнего 3D-фреймв�
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
-./build/bin/crossrender_example
+./build/bin/example
 ```
 
 ### Пример приложения
 
-`crossrender_example` — один бинарник, демонстрирующий все возможности. Он
+`example` — один бинарник, демонстрирующий все возможности. Он
 открывается главным меню, построенным на реестре сцен: **нажмите карточку, чтобы
 открыть сцену с одним примером**, `Esc` — вернуться назад, `F1` — отладочный
 оверлей.
 
 ```bash
-./build/bin/crossrender_example --list          # вывести все сцены
-./build/bin/crossrender_example --scene voxel   # сразу перейти к сцене
-./build/bin/crossrender_example --headless --frames 120 --screenshot shot.png
-./build/bin/crossrender_example --retro pixel --retro-palette nes --retro-res 320x180
-./build/bin/crossrender_example --retro ascii --scene game-pong
-./build/bin/crossrender_example --post --scene 3d-postfx
-./build/bin/crossrender_example --filters --scene 3d-lighting
+./build/bin/example --list          # вывести все сцены
+./build/bin/example --scene voxel   # сразу перейти к сцене
+./build/bin/example --headless --frames 120 --screenshot shot.png
+./build/bin/example --retro pixel --retro-palette nes --retro-res 320x180
+./build/bin/example --retro ascii --scene game-pong
+./build/bin/example --post --scene 3d-postfx
+./build/bin/example --filters --scene 3d-lighting
 ```
 
 ## Карта возможностей
@@ -185,8 +185,8 @@ MEGA_SCENE(MineScene, "3d-mine", "My Scene", "3D", "What it demonstrates")
 
 ```bash
 ./build.sh test                      # всё
-./build/bin/crossrender_tests ui      # фильтр по suite или suite.case
-./build/bin/crossrender_tests --list
+./build/bin/tests ui      # фильтр по suite или suite.case
+./build/bin/tests --list
 ```
 
 У каждого модуля свой файл тестов. GPU-тесты создают оффскрин OpenGL-контекст и
@@ -232,7 +232,7 @@ MEGA_SCENE(MineScene, "3d-mine", "My Scene", "3D", "What it demonstrates")
 
 ## Сцены витрины
 
-`crossrender_example` открывается сгенерированным главным меню; каждая карточка
+`example` открывается сгенерированным главным меню; каждая карточка
 ниже — саморегистрирующаяся сцена в `examples/sources/scenes/`.
 
 | Сцена | Категория | Демонстрирует |
@@ -285,9 +285,9 @@ MEGA_SCENE(MineScene, "3d-mine", "My Scene", "3D", "What it demonstrates")
 
 ```
 ./build.sh --clean          # сборка с нуля: 0 ошибок, 0 предупреждений
-./build/host/bin/crossrender_tests
+./build/host/bin/tests
                             # 637 пройдено, 0 провалено, 1 пропущен  (52 набора)
-./build/host/bin/crossrender_example --list
+./build/host/bin/example --list
                             # 44 сцены зарегистрировано
 ```
 

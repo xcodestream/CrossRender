@@ -247,7 +247,7 @@ bool ParseCentralDirectory(const ByteBuffer& zip, std::vector<ZipEntry>* out) {
     u32 cdSize = 0, cdOfs = 0;
     if (!FindEocd(zip, &count, &cdSize, &cdOfs)) return false;
     if (count == 0xFFFF || cdOfs == 0xFFFFFFFFu || cdSize == 0xFFFFFFFFu) {
-        ENG_LOGE("fs", "assets.zip: ZIP64 не поддерживается");
+        ENG_LOGE("fs", "assets.dat: ZIP64 не поддерживается");
         return false;
     }
     const usize n = zip.size();
@@ -324,13 +324,13 @@ bool ZipReadFile(const ByteBuffer& zip, const std::string& name, ByteBuffer* out
         return true;
     }
     if (found->method != 8) {
-        ENG_LOGE("fs", "assets.zip: метод сжатия %u записи '%s' не поддерживается",
+        ENG_LOGE("fs", "assets.dat: метод сжатия %u записи '%s' не поддерживается",
                  found->method, name.c_str());
         return false;
     }
     out->clear();
     if (!Inflate(data, found->compressedSize, found->uncompressedSize, out)) {
-        ENG_LOGE("fs", "assets.zip: повреждённая deflate-запись '%s'", name.c_str());
+        ENG_LOGE("fs", "assets.dat: повреждённая deflate-запись '%s'", name.c_str());
         return false;
     }
     return out->size() == found->uncompressedSize;

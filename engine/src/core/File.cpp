@@ -35,7 +35,7 @@ std::string g_userRoot;
 
 std::string ExecutablePathFallback();
 
-// Ленивый индекс assets.zip (см. CR_ASSET_ZIP): архивы ищутся рядом с исполняемым
+// Ленивый индекс assets.dat (zip-архив) (см. CR_ASSET_ZIP): архивы ищутся рядом с исполняемым
 // файлом и в корне ассетов, читаются в память один раз и отдают записи по запросу.
 // Нативные файлы имеют приоритет: архивы используются как откат, поэтому в
 // разработке отдельный изменённый файл перекрывает упакованную копию.
@@ -119,9 +119,9 @@ private:
         // один exists() на промахе, чем навсегда застывший список архивов.
         std::vector<std::string> candidates;
         std::string exeDir = PathDir(ExecutablePathFallback());
-        if (!exeDir.empty()) candidates.push_back(PathJoin(exeDir, "assets.zip"));
+        if (!exeDir.empty()) candidates.push_back(PathJoin(exeDir, "assets.dat"));
         const std::string& root = GetAssetRoot();
-        if (!root.empty()) candidates.push_back(PathJoin(root, "assets.zip"));
+        if (!root.empty()) candidates.push_back(PathJoin(root, "assets.dat"));
         for (const std::string& candidate : candidates) {
             if (std::find_if(archives_.begin(), archives_.end(),
                              [&candidate](const Archive& a) {
@@ -132,7 +132,7 @@ private:
             std::error_code ec;
             if (!std::filesystem::exists(candidate, ec) || ec) continue;
             // Архив читается напрямую с диска: через VFS нельзя - ReadFile для
-            // самого assets.zip снова попал бы в этот индекс.
+            // самого assets.dat снова попал бы в этот индекс.
             std::ifstream f(candidate, std::ios::binary);
             if (!f.is_open()) continue;
             f.seekg(0, std::ios::end);
@@ -145,11 +145,11 @@ private:
             f.read(reinterpret_cast<char*>(archive.bytes.data()), size);
             if (!f.good() && !f.eof()) continue;
             if (ZipListEntries(archive.bytes, &archive.names)) {
-                ENG_LOGI("fs", "asset zip: %s (%d files)", candidate.c_str(),
+                ENG_LOGI("fs", "asset archive: %s (%d files)", candidate.c_str(),
                          static_cast<int>(archive.names.size()));
                 archives_.push_back(std::move(archive));
             } else {
-                ENG_LOGW("fs", "asset zip %s is not a readable archive", candidate.c_str());
+                ENG_LOGW("fs", "asset archive %s is not a readable archive", candidate.c_str());
             }
         }
     }
@@ -185,7 +185,7 @@ public:
                 }
             }
         }
-        // Откат: ассеты могут быть упакованы в assets.zip рядом с приложением.
+        // Откат: ассеты могут быть упакованы в assets.dat рядом с приложением.
         return AssetZip().Read(path, out);
     }
 
@@ -219,7 +219,7 @@ public:
              !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
             out.push_back(it->path().filename().string());
         }
-        // Записи из assets.zip дополняют листинг и не затирают нативные файлы.
+        // Записи из assets.dat дополняют листинг и не затирают нативные файлы.
         AssetZip().ChildrenOf(path, &out);
         std::sort(out.begin(), out.end());
         out.erase(std::unique(out.begin(), out.end()), out.end());

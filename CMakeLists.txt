@@ -31,7 +31,7 @@ option(CR_TEST_INCLUDE_EXAMPLE "Link the example scenes into the test binary (in
 option(CR_ASAN "Enable AddressSanitizer + UBSan" OFF)
 option(CR_WERROR "Treat warnings as errors" OFF)
 option(CR_METAL "Route rendering through the Metal compatibility layer (Apple only)" OFF)
-option(CR_ASSET_ZIP "Package examples/assets into assets.zip beside the app (all platforms except WASM; read back through core/File zip fallback)" OFF)
+option(CR_ASSET_ZIP "Package examples/assets into assets.dat beside the app (all platforms except WASM; read back through core/File zip fallback)" OFF)
 option(CR_WASM_GZIP "After the WASM build produce .gz sidecars for js/wasm/data/html" OFF)
 option(CR_WASM_BROTLI "After the WASM build produce .br sidecars for js/wasm/data/html" OFF)
 
@@ -303,7 +303,9 @@ if(CR_BUILD_EXAMPLE)
         ${CMAKE_CURRENT_SOURCE_DIR}/examples/sources/*.h)
     add_executable(crossrender_example ${CR_EXAMPLE_SOURCES})
     target_link_libraries(crossrender_example PRIVATE crossrender)
+    # Файлы вывода - без префикса движка: example(.html/.js/.wasm), libexample.so.
     set_target_properties(crossrender_example PROPERTIES
+        OUTPUT_NAME "example"
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
         FOLDER "Examples")
     source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${CR_EXAMPLE_SOURCES})
@@ -317,6 +319,15 @@ if(CR_BUILD_EXAMPLE)
 -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=1 \
 -sENVIRONMENT=web -sMALLOC=emmalloc -sAGGRESSIVE_VARIABLE_ELIMINATION=1 \
 --closure 1 --shell-file ${CMAKE_CURRENT_SOURCE_DIR}/cmake/shell.html")
+        # Пакет ассетов всегда называется assets.data независимо от имени таргета:
+        # переименовываем выход emcc пост-сборкой, shell.html знает про это имя.
+        add_custom_command(TARGET crossrender_example POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E remove -f
+                $<TARGET_FILE_DIR:crossrender_example>/assets.data
+            COMMAND ${CMAKE_COMMAND} -E rename
+                $<TARGET_FILE_DIR:crossrender_example>/example.data
+                $<TARGET_FILE_DIR:crossrender_example>/assets.data
+            VERBATIM)
         # Пост-сжатие вывода в сайдкары .gz/.br; сами файлы остаются несжатыми -
         # выбор кодировки происходит на стороне tools/serve_wasm.py.
         if(CR_WASM_GZIP OR CR_WASM_BROTLI)
@@ -330,9 +341,9 @@ if(CR_BUILD_EXAMPLE)
                 VERBATIM)
         endif()
     elseif(CR_ASSET_ZIP)
-        # Упаковка ассетов игры в assets.zip рядом с приложением. Движок читает
-        # архив через собственный DEFLATE-декодер (core/Zip) с прозрачным
-        # откатом в core/File - отдельно распаковывать ничего не нужно.
+        # Упаковка ассетов игры в assets.dat (внутри - zip) рядом с приложением.
+        # Движок читает архив через собственный DEFLATE-декодер (core/Zip) с
+        # прозрачным откатом в core/File - отдельно распаковывать ничего не нужно.
         find_program(CR_PYTHON_EXE python3)
         if(NOT CR_PYTHON_EXE)
             message(FATAL_ERROR "CR_ASSET_ZIP=ON requires python3 on PATH")
@@ -341,7 +352,7 @@ if(CR_BUILD_EXAMPLE)
             COMMAND "${CR_PYTHON_EXE}"
                     "${CMAKE_CURRENT_SOURCE_DIR}/tools/make_asset_zip.py"
                     "${CMAKE_CURRENT_SOURCE_DIR}/examples/assets"
-                    "$<TARGET_FILE_DIR:crossrender_example>/assets.zip"
+                    "$<TARGET_FILE_DIR:crossrender_example>/assets.dat"
             VERBATIM)
     endif()
 endif()
@@ -372,6 +383,7 @@ if(CR_BUILD_TESTS)
     target_link_libraries(crossrender_tests PRIVATE crossrender)
     target_include_directories(crossrender_tests PRIVATE ${CR_SRC_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/examples/sources ${CR_ENGINE_DIR}/metal)
     set_target_properties(crossrender_tests PROPERTIES
+        OUTPUT_NAME "tests"
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
         FOLDER "Tests")
     source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${CR_TEST_SOURCES})

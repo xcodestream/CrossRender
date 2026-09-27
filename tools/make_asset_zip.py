@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Упаковывает каталог ассетов игры в assets.zip (нативные платформы, см. CR_ASSET_ZIP).
+"""Упаковывает каталог ассетов игры в assets.dat — zip по содержимому (нативные платформы, см. CR_ASSET_ZIP).
 
 Использование: python3 tools/make_asset_zip.py <каталог-ассетов> <выход.zip>
 
@@ -41,7 +41,7 @@ def main() -> int:
 
     raw = sum(os.path.getsize(f) for f, _ in files)
     packed = os.path.getsize(out)
-    print(f"assets.zip: {len(files)} files, {raw} -> {packed} bytes "
+    print(f"{os.path.basename(out)}: {len(files)} files, {raw} -> {packed} bytes "
           f"({100 - packed * 100 // max(raw, 1)}% smaller)")
     return 0
 
