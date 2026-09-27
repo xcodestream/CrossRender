@@ -1,0 +1,53 @@
+# Build output
+build/
+build-*/
+cmake-build-*/
+out/
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.wasm
+*.js.map
+*.html.map
+
+# IDE / editor
+.vscode/
+.idea/
+*.xcodeproj/
+*.xcworkspace/
+.cache/
+compile_commands.json
+.DS_Store
+Thumbs.db
+
+# Generated assets: recreate them any time with `./build.sh assets`.
+# (The tool is deterministic, so nothing binary needs to be committed.)
+examples/assets/textures/
+examples/assets/audio/
+examples/assets/lottie/
+examples/assets/models/
+examples/assets/scenes/
+examples/assets/fonts/
+examples/assets/**/*.png
+examples/assets/**/*.wav
+examples/assets/**/*.ogg
+examples/assets/**/*.mp3
+examples/assets/**/*.json
+examples/assets/**/*.ttf
+examples/assets/**/*.otf
+examples/assets/**/*.obj
+examples/assets/**/*.mtl
+examples/assets/**/*.ply
+examples/assets/**/*.stl
+examples/assets/**/*.vox
+
+# Test / runtime leftovers
+*.log
+*.png.tmp
+/tmp-*
+user/

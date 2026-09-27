@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>crossrender</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #05060c; overflow: hidden;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #e6e9f2; touch-action: none;
+  }
+  #canvas {
+    display: block; width: 100vw; height: 100vh; border: 0; outline: none;
+    image-rendering: auto; background: #05060c;
+  }
+  #overlay {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 40%, #131a33 0%, #05060c 70%);
+    transition: opacity .6s ease; z-index: 10;
+  }
+  #overlay.hidden { opacity: 0; pointer-events: none; }
+  .panel { text-align: center; max-width: 560px; padding: 32px; }
+  .panel h1 { margin: 0 0 6px; font-size: 40px; letter-spacing: -0.02em; }
+  .panel p { margin: 6px 0; color: #9aa1b4; font-size: 15px; line-height: 1.5; }
+  button {
+    margin-top: 20px; padding: 13px 30px; font-size: 16px; font-weight: 600;
+    color: #fff; background: linear-gradient(180deg, #4c8dff, #2f6fe0);
+    border: 1px solid #9cc0ff; border-radius: 10px; cursor: pointer;
+  }
+  button:hover { filter: brightness(1.12); }
+  #bar { width: 100%; height: 6px; background: #1b2030; border-radius: 3px; margin-top: 22px; overflow: hidden; }
+  #fill { width: 0%; height: 100%; background: linear-gradient(90deg, #4c8dff, #35c7d6); transition: width .2s; }
+  #status { margin-top: 10px; font-size: 13px; color: #7d859b; min-height: 18px; }
+  #error { color: #ff8a8a; font-size: 13px; margin-top: 10px; white-space: pre-wrap; text-align: left; }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+
+<div id="overlay">
+  <div class="panel">
+    <h1>crossrender</h1>
+    <p>Cross-platform C++17 / CMake engine &mdash; WebGL 2 (OpenGL ES 3) build</p>
+    <p style="font-size:13px">2D + 3D, skeletal animation, Lottie, SDF text, voxels, particles, sockets, and a full game of <em>Durak</em>.</p>
+    <button id="start">Click to start</button>
+    <div id="bar"><div id="fill"></div></div>
+    <div id="status">Waiting&hellip;</div>
+    <div id="error"></div>
+  </div>
+</div>
+
+<script>
+  // Движок читает это, чтобы задать размер контекста WebGL2 (см. WindowWasm.cpp).
+  window.CrossRender = {
+    canvasId: 'canvas',
+    onProgress(p, text) {
+      document.getElementById('fill').style.width = Math.round(p * 100) + '%';
+      document.getElementById('status').textContent = text || '';
+    },
+    onReady() {
+      document.getElementById('overlay').classList.add('hidden');
+      document.getElementById('canvas').focus();
+    },
+    onError(message) {
+      document.getElementById('error').textContent = String(message);
+    }
+  };
+
+  var canvas = document.getElementById('canvas');
+  var Module = {
+    canvas: canvas,
+    print: function (text) { console.log(text); },
+    printErr: function (text) { console.warn(text); },
+    setStatus: function (text) {
+      if (text) window.CrossRender.onProgress(0.3, text);
+    },
+    onRuntimeInitialized: function () {
+      window.CrossRender.onProgress(1, 'Ready');
+      setTimeout(function () { window.CrossRender.onReady(); }, 120);
+    },
+    onAbort: function (what) { window.CrossRender.onError('aborted: ' + what); },
+    locateFile: function (path) { return path; }
+  };
+  window.Module = Module;
+
+  // Звук в каждом браузере требует жеста пользователя: запускаем движок по клику.
+  document.getElementById('start').addEventListener('click', function () {
+    document.getElementById('status').textContent = 'Starting engine...';
+    if (typeof window.__engBoot === 'function') {
+      window.__engBoot();
+    } else if (typeof Module._main === 'function') {
+      Module._main();
+    }
+    window.CrossRender.onReady();
+  });
+
+  window.addEventListener('error', function (e) {
+    window.CrossRender.onError(e.message);
+  });
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>
