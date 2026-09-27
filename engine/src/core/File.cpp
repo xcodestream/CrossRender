@@ -1,5 +1,7 @@
 #include "crossrender/core/File.h"
 
+#include "core/Zip.h"
+
 #if defined(ENG_PLATFORM_MACOS) || defined(ENG_PLATFORM_IOS)
 #  include <mach-o/dyld.h>
 #elif defined(ENG_PLATFORM_LINUX) || defined(ENG_PLATFORM_ANDROID)
@@ -9,6 +11,7 @@
 #include "crossrender/core/Log.h"
 #include "crossrender/core/Time.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <fstream>
@@ -30,6 +33,135 @@ FileSystem* g_fs = nullptr;
 std::string g_assetRoot;
 std::string g_userRoot;
 
+std::string ExecutablePathFallback();
+
+// Ленивый индекс assets.zip (см. CR_ASSET_ZIP): архивы ищутся рядом с исполняемым
+// файлом и в корне ассетов, читаются в память один раз и отдают записи по запросу.
+// Нативные файлы имеют приоритет: архивы используются как откат, поэтому в
+// разработке отдельный изменённый файл перекрывает упакованную копию.
+class ZipIndex {
+public:
+    bool Read(const std::string& path, ByteBuffer* out) {
+        Ensure();
+        for (const Archive& archive : archives_) {
+            for (const std::string& key : LookupKeys(path)) {
+                ByteBuffer bytes;
+                if (ZipReadFile(archive.bytes, key, &bytes)) {
+                    *out = std::move(bytes);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    bool Has(const std::string& path) {
+        Ensure();
+        for (const Archive& archive : archives_) {
+            for (const std::string& key : LookupKeys(path)) {
+                if (std::find(archive.names.begin(), archive.names.end(), key) !=
+                    archive.names.end()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Имена непосредственных детей каталога `path` внутри архивов ("fonts" для
+    // запроса "assets", "Ubuntu.ttf" для запроса "assets/fonts").
+    void ChildrenOf(const std::string& path, std::vector<std::string>* out) {
+        Ensure();
+        for (const std::string& key : LookupKeys(path)) {
+            std::string prefix = key.empty() ? std::string() : key + "/";
+            for (const Archive& archive : archives_) {
+                for (const std::string& name : archive.names) {
+                    if (name.rfind(prefix, 0) != 0) continue;
+                    std::string rest = name.substr(prefix.size());
+                    usize slash = rest.find('/');
+                    out->push_back(slash == std::string::npos ? rest : rest.substr(0, slash));
+                }
+            }
+        }
+    }
+
+private:
+    struct Archive {
+        std::string location;
+        ByteBuffer bytes;
+        std::vector<std::string> names;
+    };
+
+    // Ключи поиска: путь как есть, без ведущего "assets/" и с ним — архив может
+    // быть упакован как от корня репозитория, так и от каталога ассетов.
+    std::vector<std::string> LookupKeys(const std::string& path) const {
+        std::string p = BaseKey(path);
+        std::vector<std::string> keys{p};
+        if (p.rfind("assets/", 0) == 0) {
+            keys.push_back(p.substr(7));
+        } else if (p == "assets") {
+            keys.push_back({});  // архив, упакованный от корня ассетов
+        } else if (!p.empty()) {
+            keys.push_back("assets/" + p);
+        }
+        return keys;
+    }
+
+    static std::string BaseKey(const std::string& path) {
+        std::string p = PathNormalize(path);
+        if (!p.empty() && p.front() == '/') p.erase(0, 1);
+        return p;
+    }
+
+    void Ensure() {
+        // Кандидаты пересматриваются на каждый запрос: SetAssetRoot может
+        // сменить корень уже после первого обращения к индексу. Дешевле -
+        // один exists() на промахе, чем навсегда застывший список архивов.
+        std::vector<std::string> candidates;
+        std::string exeDir = PathDir(ExecutablePathFallback());
+        if (!exeDir.empty()) candidates.push_back(PathJoin(exeDir, "assets.zip"));
+        const std::string& root = GetAssetRoot();
+        if (!root.empty()) candidates.push_back(PathJoin(root, "assets.zip"));
+        for (const std::string& candidate : candidates) {
+            if (std::find_if(archives_.begin(), archives_.end(),
+                             [&candidate](const Archive& a) {
+                                 return a.location == candidate;
+                             }) != archives_.end()) {
+                continue;  // уже загружен
+            }
+            std::error_code ec;
+            if (!std::filesystem::exists(candidate, ec) || ec) continue;
+            // Архив читается напрямую с диска: через VFS нельзя - ReadFile для
+            // самого assets.zip снова попал бы в этот индекс.
+            std::ifstream f(candidate, std::ios::binary);
+            if (!f.is_open()) continue;
+            f.seekg(0, std::ios::end);
+            std::streamoff size = f.tellg();
+            if (size <= 0) continue;
+            f.seekg(0, std::ios::beg);
+            Archive archive;
+            archive.location = candidate;
+            archive.bytes.resize(static_cast<usize>(size));
+            f.read(reinterpret_cast<char*>(archive.bytes.data()), size);
+            if (!f.good() && !f.eof()) continue;
+            if (ZipListEntries(archive.bytes, &archive.names)) {
+                ENG_LOGI("fs", "asset zip: %s (%d files)", candidate.c_str(),
+                         static_cast<int>(archive.names.size()));
+                archives_.push_back(std::move(archive));
+            } else {
+                ENG_LOGW("fs", "asset zip %s is not a readable archive", candidate.c_str());
+            }
+        }
+    }
+
+    std::vector<Archive> archives_;
+};
+
+ZipIndex& AssetZip() {
+    static ZipIndex index;
+    return index;
+}
+
 // Файловая система с корнем в каталоге ассетов плюс записываемый пользовательский каталог.
 // Порядок разрешения путей:
 //   1. абсолютные пути используются как есть
@@ -40,16 +172,21 @@ class NativeFileSystem : public FileSystem {
 public:
     bool ReadFile(const std::string& path, ByteBuffer* out) override {
         std::string resolved = ResolvePath(path);
-        if (resolved.empty()) return false;
-        std::ifstream f(resolved, std::ios::binary);
-        if (!f.is_open()) return false;
-        f.seekg(0, std::ios::end);
-        std::streamoff size = f.tellg();
-        if (size < 0) return false;
-        f.seekg(0, std::ios::beg);
-        out->resize(static_cast<usize>(size));
-        if (size > 0) f.read(reinterpret_cast<char*>(out->data()), size);
-        return f.good() || f.eof();
+        if (!resolved.empty()) {
+            std::ifstream f(resolved, std::ios::binary);
+            if (f.is_open()) {
+                f.seekg(0, std::ios::end);
+                std::streamoff size = f.tellg();
+                if (size >= 0) {
+                    f.seekg(0, std::ios::beg);
+                    out->resize(static_cast<usize>(size));
+                    if (size > 0) f.read(reinterpret_cast<char*>(out->data()), size);
+                    if (f.good() || f.eof()) return true;
+                }
+            }
+        }
+        // Откат: ассеты могут быть упакованы в assets.zip рядом с приложением.
+        return AssetZip().Read(path, out);
     }
 
     bool WriteFile(const std::string& path, const void* data, usize size) override {
@@ -69,20 +206,23 @@ public:
 
     bool Exists(const std::string& path) override {
         std::string resolved = ResolvePath(path);
-        if (resolved.empty()) return false;
         std::error_code ec;
-        return std::filesystem::exists(resolved, ec);
+        if (!resolved.empty() && std::filesystem::exists(resolved, ec)) return true;
+        return AssetZip().Has(path);
     }
 
     std::vector<std::string> ListDir(const std::string& path) override {
         std::vector<std::string> out;
         std::string resolved = ResolvePath(path);
-        if (resolved.empty()) return out;
         std::error_code ec;
         for (auto it = std::filesystem::directory_iterator(resolved, ec);
              !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
             out.push_back(it->path().filename().string());
         }
+        // Записи из assets.zip дополняют листинг и не затирают нативные файлы.
+        AssetZip().ChildrenOf(path, &out);
+        std::sort(out.begin(), out.end());
+        out.erase(std::unique(out.begin(), out.end()), out.end());
         return out;
     }
 
@@ -134,7 +274,6 @@ public:
 };
 
 NativeFileSystem g_nativeFs;
-
 std::string ExecutablePathFallback() {
 #if defined(ENG_PLATFORM_WINDOWS)
     char buf[MAX_PATH];

@@ -20,6 +20,9 @@
 #   --no-tests       пропустить набор тестов
 #   --asan           AddressSanitizer + UBSan
 #   --metal          бэкенд слоя совместимости с Metal (сборки macOS/iOS)
+#   --asset-zip      упаковать ассеты игры в assets.zip (нативные платформы)
+#   --gzip           .gz-сайдкары для файлов WASM-сборки (wasm/js/data/html)
+#   --brotli         .br-сайдкары для файлов WASM-сборки (wasm/js/data/html)
 #   --jobs N         параллельные задачи сборки (по умолчанию: определённые ядра)
 #   --clean          сначала удалить каталог сборки
 # ---------------------------------------------------------------------------
@@ -34,6 +37,9 @@ BUILD_EXAMPLE="ON"
 BUILD_TESTS="ON"
 ASAN="OFF"
 METAL="OFF"
+ASSET_ZIP="OFF"
+WASM_GZIP="OFF"
+WASM_BROTLI="OFF"
 JOBS=""
 CLEAN="0"
 RUN_AFTER="0"
@@ -59,6 +65,9 @@ while [[ $# -gt 0 ]]; do
         --no-tests) BUILD_TESTS="OFF" ;;
         --asan) ASAN="ON" ;;
         --metal) METAL="ON" ;;
+        --asset-zip) ASSET_ZIP="ON" ;;
+        --gzip) WASM_GZIP="ON" ;;
+        --brotli) WASM_BROTLI="ON" ;;
         --clean) CLEAN="1" ;;
         --jobs) shift; JOBS="$1" ;;
         --jobs=*) JOBS="${1#*=}" ;;
@@ -109,6 +118,7 @@ cmake_build() {
         -DCR_BUILD_TESTS="$BUILD_TESTS" \
         -DCR_ASAN="$ASAN" \
         -DCR_METAL="$METAL" \
+        -DCR_ASSET_ZIP="$ASSET_ZIP" \
         "${args[@]+"${args[@]}"}"
 
     log "Building $name with $JOBS jobs"
@@ -155,10 +165,18 @@ build_wasm() {
     emcmake cmake -S "$ROOT" -B "$dir" \
         -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
         -DCR_BUILD_EXAMPLE="$BUILD_EXAMPLE" \
-        -DCR_BUILD_TESTS=OFF
+        -DCR_WASM_GZIP="$WASM_GZIP" \
+        -DCR_WASM_BROTLI="$WASM_BROTLI" \
+        -DCR_BUILD_TESTS=OFF \
+        -DCR_ASSET_ZIP="$ASSET_ZIP"
     log "Building WebAssembly"
     cmake --build "$dir" --parallel "$JOBS"
-    log "Serve it with:  (cd $dir/bin && python3 -m http.server 8080)  then open http://localhost:8080/crossrender_example.html"
+    if [[ "$WASM_GZIP" == "ON" || "$WASM_BROTLI" == "ON" ]]; then
+        log "Serve it with:  python3 tools/serve_wasm.py $dir/bin 8080"
+        log "then open http://localhost:8080/crossrender_example.html  (.gz/.br served with Content-Encoding)"
+    else
+        log "Serve it with:  (cd $dir/bin && python3 -m http.server 8080)  then open http://localhost:8080/crossrender_example.html"
+    fi
 }
 
 build_ios() {
@@ -174,7 +192,8 @@ build_ios() {
         -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
         -DCR_BUILD_EXAMPLE="$BUILD_EXAMPLE" \
         -DCR_BUILD_TESTS=OFF \
-        -DCR_METAL="$METAL"
+        -DCR_METAL="$METAL" \
+        -DCR_ASSET_ZIP="$ASSET_ZIP"
     log "Building iOS"
     cmake --build "$dir" --config "$BUILD_TYPE" --parallel "$JOBS" || \
         warn "Xcode build failed (open $dir/crossrender.xcodeproj to inspect)"
@@ -201,7 +220,8 @@ build_android() {
         -DANDROID_PLATFORM=android-24 \
         -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
         -DCR_BUILD_EXAMPLE="$BUILD_EXAMPLE" \
-        -DCR_BUILD_TESTS=OFF
+        -DCR_BUILD_TESTS=OFF \
+        -DCR_ASSET_ZIP="$ASSET_ZIP"
     log "Building Android"
     cmake --build "$dir" --parallel "$JOBS"
     log "Result: $dir/bin/libcrossrender_example.so (wrap with an APK to install)"

@@ -31,12 +31,39 @@ option(CR_TEST_INCLUDE_EXAMPLE "Link the example scenes into the test binary (in
 option(CR_ASAN "Enable AddressSanitizer + UBSan" OFF)
 option(CR_WERROR "Treat warnings as errors" OFF)
 option(CR_METAL "Route rendering through the Metal compatibility layer (Apple only)" OFF)
+option(CR_ASSET_ZIP "Package examples/assets into assets.zip beside the app (all platforms except WASM; read back through core/File zip fallback)" OFF)
+option(CR_WASM_GZIP "After the WASM build produce .gz sidecars for js/wasm/data/html" OFF)
+option(CR_WASM_BROTLI "After the WASM build produce .br sidecars for js/wasm/data/html" OFF)
 
 # Вне Apple слой Metal бессмыслен; отключаем вместо ошибки, чтобы флаг
 # можно было безусловно передавать в скриптах.
 if(CR_METAL AND NOT APPLE)
     message(WARNING "CR_METAL requires Apple platforms - ignoring")
     set(CR_METAL OFF)
+endif()
+
+# Инструменты для пост-сжатия WASM-вывода. Сайдкары раздаёт tools/serve_wasm.py,
+# подставляя Content-Encoding по заголовку Accept-Encoding браузера.
+if(CR_WASM_GZIP)
+    find_program(CR_GZIP_EXE gzip)
+    if(NOT CR_GZIP_EXE)
+        message(FATAL_ERROR "CR_WASM_GZIP=ON requires the gzip executable on PATH")
+    endif()
+endif()
+if(CR_WASM_BROTLI)
+    find_program(CR_BROTLI_EXE brotli)
+    if(NOT CR_BROTLI_EXE)
+        # Резерв: CLI-утилиты нет, но есть python-модуль brotli (pip install brotli).
+        execute_process(COMMAND python3 -c "import brotli"
+                        RESULT_VARIABLE CR_BROTLI_PY_RESULT
+                        OUTPUT_QUIET ERROR_QUIET)
+        if(CR_BROTLI_PY_RESULT EQUAL 0)
+            set(CR_BROTLI_PYTHON_EXE python3)
+        else()
+            message(FATAL_ERROR "CR_WASM_BROTLI=ON requires the brotli executable on PATH "
+                                "or the python3 module 'brotli' (pip install brotli)")
+        endif()
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------
@@ -290,6 +317,32 @@ if(CR_BUILD_EXAMPLE)
 -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=1 \
 -sENVIRONMENT=web -sMALLOC=emmalloc -sAGGRESSIVE_VARIABLE_ELIMINATION=1 \
 --closure 1 --shell-file ${CMAKE_CURRENT_SOURCE_DIR}/cmake/shell.html")
+        # Пост-сжатие вывода в сайдкары .gz/.br; сами файлы остаются несжатыми -
+        # выбор кодировки происходит на стороне tools/serve_wasm.py.
+        if(CR_WASM_GZIP OR CR_WASM_BROTLI)
+            add_custom_command(TARGET crossrender_example POST_BUILD
+                COMMAND ${CMAKE_COMMAND}
+                    -DOUTDIR=$<TARGET_FILE_DIR:crossrender_example>
+                    -DGZIP_EXE=${CR_GZIP_EXE}
+                    -DBROTLI_EXE=${CR_BROTLI_EXE}
+                    -DBROTLI_PYTHON=${CR_BROTLI_PYTHON_EXE}
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/wasm_compress.cmake
+                VERBATIM)
+        endif()
+    elseif(CR_ASSET_ZIP)
+        # Упаковка ассетов игры в assets.zip рядом с приложением. Движок читает
+        # архив через собственный DEFLATE-декодер (core/Zip) с прозрачным
+        # откатом в core/File - отдельно распаковывать ничего не нужно.
+        find_program(CR_PYTHON_EXE python3)
+        if(NOT CR_PYTHON_EXE)
+            message(FATAL_ERROR "CR_ASSET_ZIP=ON requires python3 on PATH")
+        endif()
+        add_custom_command(TARGET crossrender_example POST_BUILD
+            COMMAND "${CR_PYTHON_EXE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tools/make_asset_zip.py"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/examples/assets"
+                    "$<TARGET_FILE_DIR:crossrender_example>/assets.zip"
+            VERBATIM)
     endif()
 endif()
 

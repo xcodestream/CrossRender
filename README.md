@@ -1,32 +1,32 @@
 # CrossRender
 
-A cross-platform 2D/3D game engine written from scratch in C++17 with CMake and
-OpenGL. No GLFW, no SDL, no NanoVG, no external 3D framework: windows, input,
-the vector renderer, the font rasteriser, the animation system and the Lottie
-player are all implemented in this repository.
+Кроссплатформенный 2D/3D игровой движок, написанный с нуля на C++17 с CMake и
+OpenGL. Ни GLFW, ни SDL, ни NanoVG, ни внешнего 3D-фреймворка: окна, ввод,
+векторный рендерер, растеризатор шрифтов, система анимации и плеер Lottie —
+всё реализовано в этом репозитории.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  targets                                                                 │
+│  цели                                                                    │
 │    WebGL 2 (WASM)   macOS (GL 3.3 core)   Windows (GL 3.3 core)          │
 │    Linux (GL 3.3 core)   iOS (GLES 3)   Android (GLES 3)                 │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Quick start
+## Быстрый старт
 
 ```bash
-./build.sh              # build the engine, the example and the tests (host OS)
-./build.sh run          # build and launch the feature showcase
-./build.sh test         # build and run the whole test suite
-./build.sh wasm         # Emscripten / WebGL 2 build
-./build.sh ios          # iOS (Xcode project, arm64, OpenGL ES 3)
+./build.sh              # собрать движок, пример и тесты (хост-ОС)
+./build.sh run          # собрать и запустить витрину возможностей
+./build.sh test         # собрать и прогнать весь набор тестов
+./build.sh wasm         # сборка Emscripten / WebGL 2
+./build.sh ios          # iOS (проект Xcode, arm64, OpenGL ES 3)
 ./build.sh android      # Android (arm64-v8a, OpenGL ES 3)
-./build.sh all          # every platform available on this machine
-./build.sh --help       # all options
+./build.sh all          # все платформы, доступные на этой машине
+./build.sh --help       # все опции
 ```
 
-Plain CMake also works:
+Работает и обычный CMake:
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -34,15 +34,16 @@ cmake --build build --parallel
 ./build/bin/crossrender_example
 ```
 
-### The example app
+### Пример приложения
 
-`crossrender_example` is one binary that demonstrates every feature. It opens on a
-main menu built from a scene registry: **tap a card to open a scene with one
-example**, press `Esc` to come back, `F1` for the debug overlay.
+`crossrender_example` — один бинарник, демонстрирующий все возможности. Он
+открывается главным меню, построенным на реестре сцен: **нажмите карточку, чтобы
+открыть сцену с одним примером**, `Esc` — вернуться назад, `F1` — отладочный
+оверлей.
 
 ```bash
-./build/bin/crossrender_example --list          # print every scene
-./build/bin/crossrender_example --scene voxel   # jump straight to a scene
+./build/bin/crossrender_example --list          # вывести все сцены
+./build/bin/crossrender_example --scene voxel   # сразу перейти к сцене
 ./build/bin/crossrender_example --headless --frames 120 --screenshot shot.png
 ./build/bin/crossrender_example --retro pixel --retro-palette nes --retro-res 320x180
 ./build/bin/crossrender_example --retro ascii --scene game-pong
@@ -50,115 +51,115 @@ example**, press `Esc` to come back, `F1` for the debug overlay.
 ./build/bin/crossrender_example --filters --scene 3d-lighting
 ```
 
-## Feature map
+## Карта возможностей
 
-| # | Feature | Where |
+| # | Возможность | Где |
 |---|---|---|
-| 1 | 2D **and** 3D | `gfx/Renderer2D.*`, `gfx/Renderer3D.*`, scenes `2d-vector`, `3d-lighting` |
-| 2 | Animation **and blending** | `anim/Anim.*` (crossfade, additive, masked, blend spaces, state, easing), scene `3d-animation` |
-| 3 | Mixing 2D and 3D | `Engine::Step` composites a 3D pass under the 2D pass; `Camera::WorldToScreen`; scene `3d-mix-2d` |
-| 4 | NanoVG-class 2D API (original code) | `gfx/Renderer2D.*` — paths, bezier/quad/arc, fills, strokes, gradients, images, clipping, transforms |
-| 4a | Sprite atlases loaded from file | `gfx/SpriteAtlas.*` — TexturePacker (hash + array), Aseprite, Sparrow XML, libGDX and the engine's own JSON; multi-page, rotated/trimmed regions, pivots, animations, nine-patch and tiled drawing, plus a runtime shelf packer |
-| 4b | Rich text (inner/outer colour, shadow, twist, curves) | `TextStyle` + `DrawTextStyled`/`DrawTextOnPath`/`DrawTextOnArc`/`DrawTextBoxStyled`/`DrawTextTwisted`/`DrawTextShadow`/`DrawTextGradient` |
-| 4c | Slug-style GPU vector text (Eric Lengyel reference) | `gfx/SlugText.*` — quadratic outline curves in textures, banded per-pixel ray/quadratic solve, analytic coverage |
-| 5 | Native windows, no GLFW/SDL | `src/platform/<os>/` — Cocoa, Win32+WGL, X11+GLX, EGL, EAGL, Emscripten |
-| 6 | Lottie animations | `anim/Lottie.*` (own parser, player, renderer + procedural animations), scene `lottie` |
-| 7a | Multiple TTF/OTF faces staged for testing | `examples/assets/fonts/` stages seven system faces (San Francisco, Georgia, Verdana, Andale Mono, Impact, Arial Black and a real CFF/OpenType face) and validates each with the engine's own parser; scene `fonts` shows specimens, metrics, kerning, a glyph grid and a comparison table |
-| 7 | TTF/OTF text with SDF | `text/Font.*` — own `glyf` + CFF/Type2 interpreter, own rasteriser, own SDF generator, plus `GetGlyphOutline` for vector text |
-| 8 | Voxels (textured and not) + LowPoly | `voxel/Voxel.*` (greedy meshing, AO, lighting, 3D-texture raymarch); `assets/Model.*` (OBJ, glTF/GLB, PLY, STL, .vox, procedural) |
-| 9 | Platform code grouped by OS folder | `engine/src/platform/{macos,windows,linux,ios,android,wasm}/` |
-| 10 | Music (mp3, ogg) + sounds (ogg, wav) | `audio/Audio.*` — own RIFF/WAVE parser, stb_vorbis for OGG, minimp3 for MP3, 64-voice mixer, buses, 3D audio |
-| 10b | 8-bit and 16-bit chiptune music | `audio/Chiptune.*` — NES/Game Boy APU channels (pulse duty+sweep+envelope, stepped triangle, LFSR noise, wave), SPC-style sample voices with ADSR + FIR echo, a tracker format with 13 effects, five generated songs, text serialisation |
-| 10c | Pixel-art and ASCII rendering | `gfx/Retro.*` — low-resolution virtual framebuffer, 12 hardware palettes, ordered dithering, scanlines, CRT curvature + aperture mask, GPU ASCII shader with 5 charsets |
-| 11 | Scene system (one scene = one screen) | `scene/Scene.*`, `Engine` |
-| 12 | Resolution-independent 2D layout | `ui/Ui.h` anchors, `SafeArea`, flex/grid containers; scenes `ui-layout`, `ui-widgets` |
-| 13 | Build any platform from a root script | `build.sh` |
-| 14 | stb allowed | `engine/third_party/` (stb_image, stb_image_write, stb_rect_pack, stb_vorbis, minimp3) |
-| 15 | Full 2D widget set + 9-patch buttons | `ui/Ui.*` — button, checkbox, radio, slider, drag, text field, text area, list view, scrollbar, dropdown, combo, tabs, collapsing header, color picker, progress, spinner, tooltip, modal, toast; 9-patch in `Renderer2D::Image9` |
-| 16 | Static library + giant example | target `crossrender`, app `examples/sources/` (~20 scenes) |
-| 17 | Full game of **Дурак** with animation | `examples/sources/games/DurakRules.h` + `scenes/SceneDurak.cpp`, tests in `tests/test_durak.cpp` |
-| 18 | WebSocket (WASM) + TCP/UDP sockets | `net/Net.*`, `src/platform/wasm/WebSocketGlue.cpp`, scene `network` |
-| 19 | Tests for every feature | `tests/` (one file per module) — 30 files, **637 cases, 0 failed** (1 skipped) |
-| 20 | 3D lighting and shadows | cascaded directional shadow maps, spot/point casters, PBR-lite forward shader; scene `3d-lighting` |
-| 21 | 3D particle system with blending | `fx/Particles.*` — 8 presets, curves, attractors, vortex, collision, trails, sub-emitters; scene `particles` |
-| 21b | Post-processing filters (blur, distort, CRT, glitch, ...) | `gfx/FilterChain.*` — 31 stackable filters with a parameter block, 10 presets, a preview grid, plus the existing bloom/tonemap chain |
-| 22 | Example builds for every supported platform | `build.sh <platform>` |
+| 1 | 2D **и** 3D | `gfx/Renderer2D.*`, `gfx/Renderer3D.*`, сцены `2d-vector`, `3d-lighting` |
+| 2 | Анимация **и блендинг** | `anim/Anim.*` (кроссфейд, аддитивность, маски, бленд-пространства, состояния, изинг), сцена `3d-animation` |
+| 3 | Совмещение 2D и 3D | `Engine::Step` компонует 3D-проход под 2D-проходом; `Camera::WorldToScreen`; сцена `3d-mix-2d` |
+| 4 | 2D API класса NanoVG (оригинальный код) | `gfx/Renderer2D.*` — пути, безье/квадратичные/дуги, заливки, обводки, градиенты, изображения, клиппинг, трансформы |
+| 4a | Атласы спрайтов, загружаемые из файла | `gfx/SpriteAtlas.*` — TexturePacker (hash + array), Aseprite, Sparrow XML, libGDX и собственный JSON движка; многостраничность, повёрнутые/обрезанные области, пивоты, анимации, nine-patch и тайловая отрисовка, плюс рантайм-упаковщик |
+| 4b | Богатый текст (внутренняя/внешняя заливка, тень, скручивание, кривые) | `TextStyle` + `DrawTextStyled`/`DrawTextOnPath`/`DrawTextOnArc`/`DrawTextBoxStyled`/`DrawTextTwisted`/`DrawTextShadow`/`DrawTextGradient` |
+| 4c | Векторный GPU-текст в стиле Slug (по статье Эрика Ленгьела) | `gfx/SlugText.*` — квадратичные кривые контуров в текстурах, полосное решение «луч/квадрика» на пиксель, аналитическое покрытие |
+| 5 | Нативные окна без GLFW/SDL | `src/platform/<os>/` — Cocoa, Win32+WGL, X11+GLX, EGL, EAGL, Emscripten |
+| 6 | Анимации Lottie | `anim/Lottie.*` (свой парсер, плеер, рендерер + процедурные анимации), сцена `lottie` |
+| 7a | Несколько шрифтов TTF/OTF, подключённых для тестирования | `examples/assets/fonts/` подключает семь системных гарнитур (San Francisco, Georgia, Verdana, Andale Mono, Impact, Arial Black и настоящую CFF/OpenType) и проверяет каждую собственным парсером движка; сцена `fonts` показывает образцы, метрики, кернинг, сетку глифов и сравнительную таблицу |
+| 7 | Текст TTF/OTF с SDF | `text/Font.*` — собственный интерпретатор `glyf` + CFF/Type2, собственный растеризатор, собственный генератор SDF, плюс `GetGlyphOutline` для векторного текста |
+| 8 | Воксели (текстурированные и нет) + LowPoly | `voxel/Voxel.*` (greedy-мешинг, AO, освещение, raymarch по 3D-текстуре); `assets/Model.*` (OBJ, glTF/GLB, PLY, STL, .vox, процедурные) |
+| 9 | Код платформ сгруппирован по папкам ОС | `engine/src/platform/{macos,windows,linux,ios,android,wasm}/` |
+| 10 | Музыка (mp3, ogg) + звуки (ogg, wav) | `audio/Audio.*` — собственный парсер RIFF/WAVE, stb_vorbis для OGG, minimp3 для MP3, микшер на 64 голоса, шины, 3D-звук |
+| 10b | 8- и 16-битная чиптюн-музыка | `audio/Chiptune.*` — каналы APU NES/Game Boy (прямоугольные со скважностью + sweep + огибающей, ступенчатый треугольный, шум на LFSR, волновой), семплерные голоса в стиле SPC с ADSR + FIR-эхом, формат трекера с 13 эффектами, пять сгенерированных мелодий, текстовая сериализация |
+| 10c | Пиксель-арт и ASCII-рендеринг | `gfx/Retro.*` — низкоразрешённый виртуальный фреймбуфер, 12 аппаратных палитр, упорядоченный дизеринг, сканлайны, кривизна CRT + апертурная маска, GPU ASCII-шейдер с 5 наборами символов |
+| 11 | Система сцен (одна сцена = один экран) | `scene/Scene.*`, `Engine` |
+| 12 | 2D-вёрстка, независимая от разрешения | якоря `ui/Ui.h`, `SafeArea`, flex/grid-контейнеры; сцены `ui-layout`, `ui-widgets` |
+| 13 | Сборка любой платформы из корневого скрипта | `build.sh` |
+| 14 | stb разрешён | `engine/third_party/` (stb_image, stb_image_write, stb_rect_pack, stb_vorbis, minimp3) |
+| 15 | Полный набор 2D-виджетов + 9-patch кнопки | `ui/Ui.*` — кнопка, чекбокс, радио, слайдер, перетаскивание, текстовое поле, текстовая область, список, скроллбар, дропдаун, комбо, вкладки, сворачиваемый заголовок, выбор цвета, прогресс, спиннер, тултип, модалка, тост; 9-patch в `Renderer2D::Image9` |
+| 16 | Статическая библиотека + большая витрина | таргет `crossrender`, приложение `examples/sources/` (~20 сцен) |
+| 17 | Полная игра в **Дурака** с анимацией | `examples/sources/games/DurakRules.h` + `scenes/SceneDurak.cpp`, тесты в `tests/test_durak.cpp` |
+| 18 | WebSocket (WASM) + TCP/UDP-сокеты | `net/Net.*`, `src/platform/wasm/WebSocketGlue.cpp`, сцена `network` |
+| 19 | Тесты на каждую возможность | `tests/` (один файл на модуль) — 30 файлов, **637 кейсов, 0 провалено** (1 пропущен) |
+| 20 | 3D-освещение и тени | каскадные карты теней направленного света, прожекторы/точечные источники, forward-шейдер PBR-lite; сцена `3d-lighting` |
+| 21 | 3D-система частиц со смешиванием | `fx/Particles.*` — 8 пресетов, кривые, аттракторы, вихрь, коллизии, шлейфы, суб-эмиттеры; сцена `particles` |
+| 21b | Фильтры пост-обработки (blur, искажения, CRT, глитч, ...) | `gfx/FilterChain.*` — 31 стекируемый фильтр с блоком параметров, 10 пресетов, сетка предпросмотра, плюс имеющаяся цепочка bloom/tonemap |
+| 22 | Сборка примера для каждой поддерживаемой платформы | `build.sh <platform>` |
 
-## Layout
+## Структура
 
 ```
-CMakeLists.txt              single build definition for every platform
-build.sh                    root build script (all platforms + assets + run)
-cmake/shell.html            WebGL shell page used by the WASM build
+CMakeLists.txt              единое описание сборки для всех платформ
+build.sh                    корневой сборочный скрипт (все платформы + ассеты + запуск)
+cmake/shell.html            WebGL-страница-оболочка для WASM-сборки
 engine/
-  include/crossrender/              public headers, one folder per module
-  src/                      implementations (same folder names)
-  src/platform/<os>/        native window / GL context / platform services
-  third_party/              vendored single-file libraries
-examples/sources/              the showcase application
-  Mega.h, Mega.cpp          scene framework, asset helpers, scene registry
-  main.cpp                  boot, CLI, theme wiring
-  scenes/                   one file per feature scene
-  games/DurakRules.h        pure Durak rules (unit tested)
-tests/                      test suite (one file per module) + runner
-examples/assets/          runtime assets (fonts, textures, audio, models)
+  include/crossrender/              публичные заголовки, одна папка на модуль
+  src/                      реализации (те же имена папок)
+  src/platform/<os>/        нативное окно / контекст GL / сервисы платформы
+  third_party/              вендоренные однофайловые библиотеки
+examples/sources/              приложение-витрина
+  Mega.h, Mega.cpp          каркас сцен, хелперы ассетов, реестр сцен
+  main.cpp                  запуск, CLI, подключение темы
+  scenes/                   один файл на сцену-возможность
+  games/DurakRules.h        чистые правила Дурака (покрыты юнит-тестами)
+tests/                       набор тестов (один файл на модуль) + раннер
+examples/assets/          рантайм-ассеты (шрифты, текстуры, аудио, модели)
 ```
 
-### Modules
+### Модули
 
-| Module | Header | Notes |
+| Модуль | Заголовок | Заметки |
 |---|---|---|
-| Core | `crossrender/core/{Base,Math,Log,File,Json,Time}.h` | math (vec/mat/quat/colour/rect), logging, virtual file system, JSON DOM, frame clock |
-| Platform | `crossrender/platform/{Window,Platform}.h` | native windows, input state machine, services, headless GL context |
-| Graphics | `crossrender/gfx/{GL,Texture,Shader,Mesh,Renderer2D,Renderer3D,RenderTarget}.h` | own GL loader (no glad/GLEW), 2D vector renderer, PBR-lite 3D renderer, HDR targets, post FX |
-| Text | `crossrender/text/Font.h` | TrueType `glyf` and CFF/Type2 outlines, analytic rasteriser, SDF generator, dynamic atlas, UTF-8 |
-| Animation | `crossrender/anim/{Anim,Lottie}.h` | skeletons, clips, blending, state, easing, springs, tween; Lottie player |
-| Audio | `crossrender/audio/Audio.h` | WAV/OGG/MP3 decoders, mixer, buses, 3D positional audio, per-OS output |
-| Assets | `crossrender/assets/Model.h` | OBJ+MTL, glTF/GLB, PLY, STL, MagicaVoxel `.vox`, procedural low-poly |
-| Voxel | `crossrender/voxel/Voxel.h` | chunked world, greedy mesher, AO, flood-fill light, DDA raycast, 3D-texture raymarch |
-| FX | `crossrender/fx/Particles.h` | CPU simulation, instanced GPU rendering, curves, sub-emitters |
-| UI | `crossrender/ui/Ui.h` | theme, anchors, flex layout, full widget set, 9-patch |
-| Scene | `crossrender/scene/Scene.h`, `crossrender/Engine.h` | scene stack, transitions, engine facade |
-| Net | `crossrender/net/Net.h` | TCP, UDP, RFC 6455 WebSocket, HTTP GET |
-| Test | `crossrender/test/Test.h` | tiny test framework used by `tests/` |
+| Core | `crossrender/core/{Base,Math,Log,File,Json,Time}.h` | математика (vec/mat/quat/цвет/прямоугольник), логирование, виртуальная файловая система, JSON DOM, часы кадра |
+| Platform | `crossrender/platform/{Window,Platform}.h` | нативные окна, автомат ввода, сервисы, headless GL-контекст |
+| Graphics | `crossrender/gfx/{GL,Texture,Shader,Mesh,Renderer2D,Renderer3D,RenderTarget}.h` | собственный загрузчик GL (без glad/GLEW), 2D-векторный рендерер, 3D-рендерер PBR-lite, HDR-таргеты, пост-эффекты |
+| Text | `crossrender/text/Font.h` | контуры TrueType `glyf` и CFF/Type2, аналитический растеризатор, генератор SDF, динамический атлас, UTF-8 |
+| Animation | `crossrender/anim/{Anim,Lottie}.h` | скелеты, клипы, блендинг, состояния, изинг, пружины, твины; плеер Lottie |
+| Audio | `crossrender/audio/Audio.h` | декодеры WAV/OGG/MP3, микшер, шины, 3D-позиционный звук, вывод под каждую ОС |
+| Assets | `crossrender/assets/Model.h` | OBJ+MTL, glTF/GLB, PLY, STL, MagicaVoxel `.vox`, процедурное low-poly |
+| Voxel | `crossrender/voxel/Voxel.h` | мир на чанках, greedy-мешер, AO, заливочное освещение, DDA-рейкаст, raymarch по 3D-текстуре |
+| FX | `crossrender/fx/Particles.h` | CPU-симуляция, инстансный GPU-рендеринг, кривые, суб-эмиттеры |
+| UI | `crossrender/ui/Ui.h` | тема, якоря, flex-вёрстка, полный набор виджетов, 9-patch |
+| Scene | `crossrender/scene/Scene.h`, `crossrender/Engine.h` | стек сцен, переходы, фасад движка |
+| Net | `crossrender/net/Net.h` | TCP, UDP, WebSocket RFC 6455, HTTP GET |
+| Test | `crossrender/test/Test.h` | крошечный тестовый фреймворк, используется в `tests/` |
 
-## Documentation
+## Документация
 
-Full Russian-language API documentation for every public header lives in
-`docs/` — one file per header, with a description and a code example for every
-public member (about 39 000 lines across 35 files).
+Полная русскоязычная API-документация на каждый публичный заголовок живёт в
+`docs/` — один файл на заголовок, с описанием и примером кода для каждого
+публичного члена (около 39 000 строк в 35 файлах).
 
 ```bash
-# entry point and reading order
+# входная точка и порядок чтения
 less docs/README.md
 
-# check that the docs still match the headers
+# проверить, что документация по-прежнему соответствует заголовкам
 python3 tools/doccheck.py -v
 ```
 
-`tools/doccheck.py` verifies that the text is Russian, that every member section
-carries a ```cpp example, that every identifier named in a heading exists in
-`engine/include`, and that every public class is documented somewhere.
+`tools/doccheck.py` проверяет, что текст на русском, что у каждого раздела-члена
+есть пример ```cpp, что каждый идентификатор из заголовка раздела существует в
+`engine/include` и что каждый публичный класс где-то задокументирован.
 
-## Fonts
+## Шрифты
 
-The example's interface is set in **Ubuntu**: the theme, every scene header and
-every scene control use `Assets::FontRegular()` (Ubuntu Regular at 16 px) and
-`Assets::FontLarge()` (Ubuntu Bold at 48 px for headlines). **Ubuntu Mono**
-remains available for monospace uses through `Assets::FontMono()`.
+Интерфейс примера набран в **Ubuntu**: тема, заголовок каждой сцены и каждый
+элемент управления используют `Assets::FontRegular()` (Ubuntu Regular, 16 px) и
+`Assets::FontLarge()` (Ubuntu Bold, 48 px для заголовков). **Ubuntu Mono**
+остаётся доступен для монопространственных задач через `Assets::FontMono()`.
 
-The example's assets are pre-generated and kept in `examples/assets/`; the
-procedural generator tool has been removed from the project. Ubuntu is not a
-system font on any target platform, so the family is carried in the repository
-(`tools/fonts/Ubuntu-{Regular,Bold,Light}.ttf` and
-`tools/fonts/UbuntuMono-{Regular,Bold}.ttf`, all under the Ubuntu Font Licence
-1.0 - see `tools/fonts/README.md`); the staged copies live in
+Ассеты примера предгенерированы и лежат в `examples/assets/`; инструмент
+процедурной генерации удалён из проекта. Ubuntu не является системным шрифтом ни
+на одной целевой платформе, поэтому гарнитура переносится в репозитории
+(`tools/fonts/Ubuntu-{Regular,Bold,Light}.ttf` и
+`tools/fonts/UbuntuMono-{Regular,Bold}.ttf`, все под Ubuntu Font Licence
+1.0 — см. `tools/fonts/README.md`); подключённые копии лежат в
 `examples/assets/fonts/`.
 
-If an asset file is missing, the engine falls back to its built-in procedural
-font and placeholders, so text always renders.
+Если файл ассета отсутствует, движок откатывается на встроенный процедурный
+шрифт и заглушки, поэтому текст всегда отрисовывается.
 
-## Adding a scene
+## Добавление сцены
 
 ```cpp
 // examples/sources/scenes/SceneMine.cpp
@@ -169,176 +170,182 @@ namespace {
 class MineScene : public MegaScene {
 public:
     explicit MineScene(const char* id) : MegaScene(id, /*wants3D=*/true, "3D") {}
-    void On3D(SceneContext& ctx) override { /* draw with ctx.r3d */ }
-    void OnUI(SceneContext& ctx, const Rect& content) override { /* draw with ctx.r2d / ctx.ui */ }
+    void On3D(SceneContext& ctx) override { /* рисуем через ctx.r3d */ }
+    void OnUI(SceneContext& ctx, const Rect& content) override { /* рисуем через ctx.r2d / ctx.ui */ }
 };
 }  // namespace
 MEGA_SCENE(MineScene, "3d-mine", "My Scene", "3D", "What it demonstrates")
 }  // namespace mega
 ```
 
-The build globs `examples/sources/scenes/*.cpp`, and the main menu is generated from
-the registry — the new card appears automatically.
+Сборка подхватывает `examples/sources/scenes/*.cpp` глобом, а главное меню
+генерируется из реестра — новая карточка появится автоматически.
 
-## Tests
+## Тесты
 
 ```bash
-./build.sh test                      # everything
-./build/bin/crossrender_tests ui      # filter by suite or suite.case
+./build.sh test                      # всё
+./build/bin/crossrender_tests ui      # фильтр по suite или suite.case
 ./build/bin/crossrender_tests --list
 ```
 
-Each module has its own test file. GPU tests create an offscreen OpenGL context
-and read pixels back; when no context is available they skip instead of failing,
-so the suite runs in CI without a display.
+У каждого модуля свой файл тестов. GPU-тесты создают оффскрин OpenGL-контекст и
+читают пиксели обратно; когда контекст недоступен, они пропускаются вместо
+провала, поэтому набор выполняется в CI без дисплея.
 
-## Platform notes
+## Заметки о платформах
 
-| Platform | Window | GL | Audio | Status |
+| Платформа | Окно | GL | Аудио | Статус |
 |---|---|---|---|---|
-| macOS | Cocoa `NSWindow` + `NSOpenGLContext` | 3.3 core (4.1 capable) | CoreAudio AudioUnit | built and run on the host |
-| Windows | Win32 + WGL (`wglCreateContextAttribsARB`) | 3.3 core | WASAPI | source complete |
-| Linux | X11 + GLX (`glXCreateContextAttribsARB`) | 3.3 core | ALSA via `dlopen` | source complete |
-| iOS | UIKit + `CAEAGLLayer` + `EAGLContext` | OpenGL ES 3 | AudioUnit (RemoteIO) | source complete |
-| Android | `ANativeActivity` + EGL | OpenGL ES 3 | OpenSL ES / AAudio | source complete |
-| Web | Emscripten HTML5 + WebGL 2 | OpenGL ES 3 | WebAudio | source complete |
+| macOS | Cocoa `NSWindow` + `NSOpenGLContext` | 3.3 core (потянет 4.1) | CoreAudio AudioUnit | собрано и запущено на хосте |
+| Windows | Win32 + WGL (`wglCreateContextAttribsARB`) | 3.3 core | WASAPI | код готов |
+| Linux | X11 + GLX (`glXCreateContextAttribsARB`) | 3.3 core | ALSA через `dlopen` | код готов |
+| iOS | UIKit + `CAEAGLLayer` + `EAGLContext` | OpenGL ES 3 | AudioUnit (RemoteIO) | код готов |
+| Android | `ANativeActivity` + EGL | OpenGL ES 3 | OpenSL ES / AAudio | код готов |
+| Web | Emscripten HTML5 + WebGL 2 | OpenGL ES 3 | WebAudio | код готов |
 
-Only the platform folder matching the host OS is compiled; the others stay in the
-tree, guarded by `ENG_PLATFORM_*` macros.
+Компилируется только папка платформы, совпадающая с ОС хоста; остальные остаются
+в дереве под защитой макросов `ENG_PLATFORM_*`.
 
-## Design decisions
+## Архитектурные решения
 
-* **One GL surface.** `crossrender::gl` declares its own types, enums and function
-  pointers, so no system GL header is included anywhere and the same code targets
-  GLSL 330 core and GLSL ES 3.00. `builtin::Preamble()` supplies the version and
-  precision qualifiers.
-* **CPU tessellation, GPU batching.** `Renderer2D` flattens paths, triangulates
-  fills (ear clipping with hole bridging), expands strokes (miter/round/bevel
-  joins, butt/round/square caps), emits an anti-aliasing fringe, and coalesces
-  everything into draw calls keyed by (texture, paint, blend, scissor, program).
-* **Original font stack.** `text/Font.cpp` parses `glyf` outlines and CFF Type2
-  charstrings itself and rasterises coverage and signed distance fields without
+* **Одна GL-поверхность.** `crossrender::gl` объявляет собственные типы, енумы и
+  указатели на функции, поэтому системные GL-заголовки не включаются нигде, а
+  один и тот же код таргетирует GLSL 330 core и GLSL ES 3.00.
+  `builtin::Preamble()` добавляет version- и precision-квалификаторы.
+* **Тесселяция на CPU, батчинг на GPU.** `Renderer2D` сглаживает пути,
+  триангулирует заливки (ear clipping с мостами через дырки), разворачивает
+  обводки (стыки miter/round/bevel, окончания butt/round/square), выпускает
+  аналитическую антиалиасинговую кайму и схлопывает всё в draw call'ы с ключом
+  (текстура, краска, блендинг, scissor, программа).
+* **Собственный шрифтовой стек.** `text/Font.cpp` сам разбирает контуры `glyf` и
+  чарстринги CFF Type2 и растеризирует покрытие и знаковые поля расстояний без
   stb_truetype.
-* **Deferred 3D submission.** `Renderer3D` records draws, then runs shadow
-  cascades, sky, opaque (front-to-back), transparent (back-to-front) and debug
-  lines. Custom passes such as the particle system register through
-  `Renderer3D::AddPostDraw` so they composite with correct depth.
-* **No exceptions, no RTTI dependency**, pimpl everywhere the platform or GL
-  state is involved, and every failure path logs and degrades instead of
-  crashing.
+* **Отложенная 3D-подача.** `Renderer3D` записывает вызовы отрисовки, затем
+  исполняет теневые каскады, небо, непрозрачные объекты (спереди назад),
+  прозрачные (сзади наперёд) и отладочные линии. Свои проходы, например система
+  частиц, регистрируются через `Renderer3D::AddPostDraw`, чтобы компоновать
+  кадр с корректной глубиной.
+* **Без исключений и без зависимости от RTTI**, pimpl везде, где затрагивается
+  платформа или GL-состояние, и любой путь неудачи логируется и деградирует
+  вместо падения.
 
-## The showcase scenes
+## Сцены витрины
 
-`crossrender_example` opens on a generated main menu; every card below is a
-self-registering scene in `examples/sources/scenes/`.
+`crossrender_example` открывается сгенерированным главным меню; каждая карточка
+ниже — саморегистрирующаяся сцена в `examples/sources/scenes/`.
 
-| Scene id | Category | Demonstrates |
+| Сцена | Категория | Демонстрирует |
 |---|---|---|
-| `menu` | Game | Generated launcher, animated background, category tabs, live stats |
-| `2d-vector` | 2D | Paths, splines, gradients (linear/radial/box), all caps/joins, all blend modes, nested transforms, text-on-path, batching stats |
-| `2d-sprites` | 2D | `Image`, `Image9`, `ImageQuad`, `ImageTinted4`, a card-atlas walk, bouncing sprites with trails and additive crossrender |
-| `text` | Text | Bitmap vs **SDF** ladder 8→96 px, align/baseline grid, wrapping, ellipsis, UTF-8 (Cyrillic/Greek/CJK/emoji), outline, rotation, kinetic typography |
-| `ui-layout` | UI | Phone/tablet/desktop previews, anchors, `SafeArea`, flex/grid layout, live DPI switching |
-| `ui-widgets` | UI | Every widget in `Ui.h`, three themes, modal/popup/toast, keyboard focus, event log |
-| `ui-ninepatch` | UI | 9-patch buttons stretched across 14 sizes, patch guides, runtime 9-patch designer |
-| `ui-forms` | UI | Validated form, inline errors, JSON save/load round-trip |
-| `3d-lighting` | 3D | Material grid, directional/point/spot lights, cascaded shadow maps, fog, cascade debug |
-| `3d-models` | 3D | OBJ+MTL, glTF/GLB, PLY, STL, MagicaVoxel `.vox`, every primitive builder, instancing, picking |
-| `3d-animation` | Animation | Skeleton, clips, crossfade, additive layers, masked blending, blend space, skinning, easing/springs |
-| `3d-mix-2d` | 3D | 2D UI tracked to 3D world positions, ray picking, a 2D minimap over a 3D island |
-| `3d-postfx` | FX | HDR target, bloom, four tonemap modes, FXAA, vignette, grain, chromatic aberration, presets |
-| `voxel` | Voxel | Island generation, greedy vs per-face meshing, AO, sky light, textured/vertex-coloured, 3D-texture raymarch, block editing |
-| `particles` | FX | All eight presets, curves, attractors, vortex, mesh emitters, ground collision, sub-emitters, blend modes |
-| `fx-showcase` | FX | Particles + 3D + 2D compositing, spell state machine, projected crossrender sprites, shockwaves |
-| `lottie` | Animation | Bodymovin playback, gallery, scrubbing, segments, speed, "Lottie as UI" |
-| `audio` | Audio | Sound pads with waveforms, 4×8 step sequencer, mixer/buses, 3D positional audio |
-| `network` | Network | TCP loopback chat, UDP ping/pong, WebSocket client, background HTTP GET, interpolated remote players |
-| `durak` | Game | Complete **Дурак** card game: rules, AI, animated cards, sounds, Lottie game-over |
-| `retro-display` | FX | Pixel-art and ASCII modes: mode/resolution/palette switching, dithering, scanlines, CRT curvature, aperture mask, live stats |
-| `post-filters` | FX | Filter chain editor: add/remove/reorder/enable 31 filters, live parameters, 10 presets, preview grid |
-| `text-fx` | Text | Inner/outer gradients, outlines, soft shadows, crossrender, twisting, text on arcs and paths, combinations |
-| `chiptune` | Audio | 8-bit vs 16-bit chip playback, a live tracker view, channel mute/solo, waveform scope, song switching |
-| `game-snake` | Game | Playable Snake in pixel-art style with particles, shake and a persisted high score |
-| `game-breakout` | Game | Playable Breakout with power-ups, ball trails, screen shake and a "juice" toggle |
-| `game-pong` | Game | Pong drawn entirely in ASCII, two-player and three AI levels |
-| `game-roguelike` | Game | Turn-based ASCII dungeon: shadowcast FOV, monsters, items, inventory, stairs |
-| `game-platformer` | Game | Side-scrolling platformer: coyote time, wall jumps, moving platforms, enemies, HUD |
-| `game-space-shooter` | Game | ASCII starfield shooter with waves, a boss and power-ups |
-| `game-mathlogic` | Game | **Number Logic (KenKen)**: 105 levels across 3x3..9x9 and five tiers, every one generated and proved to have exactly one solution; cage arithmetic with + - x /, cage outlines, pencil marks, hints with explanations and a solver-backed attract mode |
-| `game-flight` | Game | Low-poly 3D dogfight: arcade flight model with stall, guns/missiles with lock-on, four enemy types and a boss ace, low-poly island terrain, ring gates, 10 wave missions, full cockpit HUD with radar and target boxes |
-| `game-match3` | Game | **Hex** match-3: 61-cell axial board, rotating a triangle of three mutually-adjacent hexes as the headline move, matches along all three hex axes, beam/bomb/prism specials with hex-specific combos, 14 levels plus a timed endless mode |
-| `game-crossword` | Game | Crossword: six derived puzzles (5x5 to 13x13) with clue lists, on-screen keyboard, checks/hints/reveal, timer and auto-solving attract mode |
-| `earth` | 3D | Rotating Earth: procedurally generated 2048x1024 continents with height-driven normal mapping, biome colouring, polar ice, a specular sea, a separately rotating cloud shell, a fresnel atmosphere, night-side city lights, a bloomed sun, a starfield and a cratered moon |
-| `atlas` | Graphics | Loads the same sheet from five descriptor formats, draws regions/animations/nine-patches/tiling, and packs an atlas at runtime |
-| `fonts` | Text | Every staged TTF/OTF face: specimens at 7 sizes, kerning, metrics, a glyph grid and a cross-font comparison table |
-| `game-minecraft` | Game | Voxel sandbox: generated terrain, break/place blocks, day/night, hotbar, minimap, saved worlds |
-| `game-doom` | Game | Doom-2-style raycaster: textured walls, floor/ceiling, depth-sorted sprites, doors, keys, weapons, HUD |
-| `game-ascii` | Game | ASCII action RPG in the Steam-ASCII tradition: character-grid world, animated ASCII sprites, biomes, boss |
-| `3d-robot` | 3D | Low-poly dancing robot: primitive-built body on a real skeleton, three dances, beat-synced additive layers, disco stage |
+| `menu` | Игра | Сгенерированный лаунчер, анимированный фон, вкладки категорий, живая статистика |
+| `2d-vector` | 2D | Пути, сплайны, градиенты (линейный/радиальный/box), все окончания/стыки, все режимы смешивания, вложенные трансформы, текст по пути, статистика батчинга |
+| `2d-sprites` | 2D | `Image`, `Image9`, `ImageQuad`, `ImageTinted4`, прогулка по карточному атласу, прыгающие спрайты со шлейфами и аддитивным свечением |
+| `text` | Текст | Лестница bitmap vs **SDF** 8→96 px, сетка выравнивания/базовых линий, переносы, многоточие, UTF-8 (кириллица/греческий/CJK/эмодзи), контур, вращение, кинетическая типографика |
+| `ui-layout` | UI | Превью телефона/планшета/десктопа, якоря, `SafeArea`, flex/grid-вёрстка, живое переключение DPI |
+| `ui-widgets` | UI | Все виджеты из `Ui.h`, три темы, модалки/попапы/тосты, фокус с клавиатуры, журнал событий |
+| `ui-ninepatch` | UI | 9-patch кнопки, растянутые по 14 размерам, направляющие патчей, рантайм-дизайнер 9-patch |
+| `ui-forms` | UI | Валидируемая форма, инлайн-ошибки, сохранение/загрузка JSON туда-обратно |
+| `3d-lighting` | 3D | Сетка материалов, направленный/точечный/прожекторный свет, каскадные карты теней, туман, отладка каскадов |
+| `3d-models` | 3D | OBJ+MTL, glTF/GLB, PLY, STL, MagicaVoxel `.vox`, все билдеры примитивов, инстансинг, пикинг |
+| `3d-animation` | Анимация | Скелет, клипы, кроссфейд, аддитивные слои, маскированный блендинг, бленд-пространство, скиннинг, изинг/пружины |
+| `3d-mix-2d` | 3D | 2D UI, привязанный к 3D-позициям в мире, лучевой пикинг, 2D-миникарта над 3D-островом |
+| `3d-postfx` | FX | HDR-таргет, bloom, четыре режима tonemap, FXAA, виньетка, зерно, хроматическая аберрация, пресеты |
+| `voxel` | Воксель | Генерация острова, greedy против per-face мешинга, AO, свет неба, текстурированные/вершинно-окрашенные, raymarch по 3D-текстуре, редактирование блоков |
+| `particles` | FX | Все восемь пресетов, кривые, аттракторы, вихрь, эмиттеры из мешей, коллизии с землёй, суб-эмиттеры, режимы смешивания |
+| `fx-showcase` | FX | Композитинг частиц + 3D + 2D, стейт-машина заклинаний, проецируемые светящиеся спрайты, ударные волны |
+| `lottie` | Анимация | Проигрывание Bodymovin, галерея, скраббинг, сегменты, скорость, «Lottie как UI» |
+| `audio` | Аудио | Саунд-пэды с волновыми формами, секвенсор 4×8 шагов, микшер/шины, 3D-позиционный звук |
+| `network` | Сеть | TCP-чат на loopback, UDP ping/pong, WebSocket-клиент, фоновый HTTP GET, интерполированные удалённые игроки |
+| `durak` | Игра | Полная карточная игра **Дурак**: правила, AI, анимированные карты, звуки, Lottie game-over |
+| `retro-display` | FX | Режимы пиксель-арт и ASCII: переключение режима/разрешения/палитры, дизеринг, сканлайны, кривизна CRT, апертурная маска, живая статистика |
+| `post-filters` | FX | Редактор цепочки фильтров: добавить/удалить/переставить/включить 31 фильтр, живые параметры, 10 пресетов, сетка предпросмотра |
+| `text-fx` | Текст | Внутренние/внешние градиенты, контуры, мягкие тени, свечение, скручивание, текст по дугам и путям, комбинации |
+| `chiptune` | Аудио | Проигрывание 8-бит vs 16-бит чипов, живой вид трекера, мьют/соло каналов, осциллограмма, переключение песен |
+| `game-snake` | Игра | Играбельная Змейка в стиле пиксель-арт с частицами, тряской и сохраняемым рекордом |
+| `game-breakout` | Игра | Играбельный Breakout с бонусами, шлейфами мяча, тряской экрана и переключателем «сочности» |
+| `game-pong` | Игра | Pong, нарисованный целиком в ASCII, два игрока и три уровня AI |
+| `game-roguelike` | Игра | Пошаговое ASCII-подземелье: FOV shadowcast, монстры, предметы, инвентарь, лестницы |
+| `game-platformer` | Игра | Платформер с боковым скроллом: coyote time, прыжки от стен, движущиеся платформы, враги, HUD |
+| `game-space-shooter` | Игра | ASCII-шутер в звёздном поле с волнами, боссом и бонусами |
+| `game-mathlogic` | Игра | **Числовая логика (KenKen)**: 105 уровней от 3x3 до 9x9 и пять уровней сложности, каждый сгенерирован и доказано имеет ровно одно решение; арифметика клеток с + - x /, контуры клеток, карандашные пометки, подсказки с объяснениями и attract-режим на солвере |
+| `game-flight` | Игра | Low-poly 3D-догфайт: аркадная модель полёта со сваливанием, пушки/ракеты с захватом, четыре типа врагов и босс-ас, low-poly рельеф острова, кольцевые ворота, 10 волновых миссий, полноценный кокпит-HUD с радаром и рамками целей |
+| `game-match3` | Игра | **Гексагональная** match-3: поле на 61 клетку в аксиальных координатах, вращение треугольника из трёх взаимно-смежных шестиугольников как главный ход, совпадения по всем трём гекс-осям, особые фишки beam/bomb/prism с гекс-специфичными комбо, 14 уровней плюс бесконечный режим на время |
+| `game-crossword` | Игра | Кроссворд: шесть производных сеток (5x5..13x13) со списками подсказок, экранная клавиатура, проверки/подсказки/раскрытие, таймер и автособирающий attract-режим |
+| `earth` | 3D | Вращающаяся Земля: процедурно сгенерированные материки 2048x1024 с нормал-маппингом по высотам, окраской биомов, полярными льдами, зеркальным морем, отдельно вращающейся облачной оболочкой, атмосферой с френелем, огнями городов на ночной стороне, солнцем с блумом, звёздным полем и кратерированной Луной |
+| `atlas` | Графика | Загружает один и тот же лист из пяти форматов дескрипторов, рисует области/анимации/nine-patch/тайлинг и пакует атлас на рантайме |
+| `fonts` | Текст | Каждая подключённая гарнитура TTF/OTF: образцы в 7 размерах, кернинг, метрики, сетка глифов и межшрифтовая сравнительная таблица |
+| `game-minecraft` | Игра | Воксельная песочница: сгенерированный рельеф, ломать/ставить блоки, день/ночь, хотбар, миникарта, сохраняемые миры |
+| `game-doom` | Игра | Рейкастер в стиле Doom 2: текстурированные стены, пол/потолок, отсортированные по глубине спрайты, двери, ключи, оружие, HUD |
+| `game-ascii` | Игра | ASCII action RPG в традиции Steam-ASCII: мир из сетки символов, анимированные ASCII-спрайты, биомы, босс |
+| `3d-robot` | 3D | Low-poly танцующий робот: тело из примитивов на настоящем скелете, три танца, аддитивные слои в такт биту, диско-сцена |
 
-## Verification status
+## Статус проверки
 
-Last full run on the host (macOS arm64, Apple M4 Pro):
+Последний полный прогон на хосте (macOS arm64, Apple M4 Pro):
 
 ```
-./build.sh --clean          # from-scratch build: 0 errors, 0 warnings
+./build.sh --clean          # сборка с нуля: 0 ошибок, 0 предупреждений
 ./build/host/bin/crossrender_tests
-                            # 637 passed, 0 failed, 1 skipped  (52 suites)
+                            # 637 пройдено, 0 провалено, 1 пропущен  (52 набора)
 ./build/host/bin/crossrender_example --list
-                            # 44 scenes registered
+                            # 44 сцены зарегистрировано
 ```
 
-All 44 scenes were also rendered headlessly (`--headless --frames 240 --screenshot`)
-and inspected: every one produces a non-empty, correct image, in pixel and ASCII
-modes too (`--retro pixel|ascii`).
+Все 44 сцены также отрендерены в headless-режиме
+(`--headless --frames 240 --screenshot`) и просмотрены: каждая выдаёт непустое
+корректное изображение, включая пиксельный и ASCII режимы
+(`--retro pixel|ascii`).
 
-## Known limitations
+## Известные ограничения
 
-Honest status of the parts that are implemented but not exercised on this host,
-or that are deliberately simplified:
+Честный статус частей, которые реализованы, но не проверялись на этом хосте,
+либо сознательно упрощены:
 
-* **Platform coverage.** Only the macOS backend is built and run here. The
-  Windows (Win32/WGL), Linux (X11/GLX), iOS (UIKit/EAGL), Android (EGL) and Web
-  (Emscripten/WebGL 2) backends are complete and were syntax-checked with
-  stub headers; iOS also compiles against the real iPhoneOS SDK. None of them
-  has been linked or launched on a real device in this environment.
-* **`--screenshot` in windowed mode** reads the back buffer after present, which
-  some drivers return stale; headless capture (`--headless`) is exact and is what
-  the example's own screenshots use. Post-processing works with `--post`.
-* **MSAA.** The window requests 4x MSAA and falls back automatically when the
-  driver refuses it. `Renderer2D` adds its own analytic anti-aliasing fringe on
-  fills, so 2D stays smooth either way.
-* **Post-processing** needs `--post`; scenes that would like bloom report this in
-  their UI instead of faking it.
-* **Slug-style text** renders glyphs analytically from their outlines with no
-  atlas, but it is a faithful re-implementation of the *technique*, not of the
-  Slug library: glyphs are batched in runs of eight with per-instance uniforms
-  instead of Slug's packed vertex records, the drop shadow is a small ring of
-  jittered copies rather than a real blur, and there is no depth pre-pass for
-  overlapping glyphs. The curve/band data lives in two `RGBA32F` textures
-  (`R32F` samples as zero on some GL 3.2 drivers).
-* **ASCII mode** converts the *whole* frame, UI included, which is faithful to how
-  a character-grid display works but makes dense widget panels hard to read. The
-  ASCII games (Pong, roguelike, space shooter) draw their own character grids and
-  stay legible.
-* **Lottie** parsing and rendering are complete: shapes, gradients, trim paths,
-  masks, mattes, text, precomps, easing and spatial tangents, with After Effects
-  semantics for transform order, front-to-back layer stacking, style/geometry
-  ordering, solid layers and per-property defaults. The six generated sample
-  animations render correctly and are covered by a pixel-level test.
-* **Voxel raymarch** step count is fixed at 256 (`uMaxSteps`); the scene exposes
-  volume resolution instead.
-* **Renderer3D shadows** are cascaded directional maps; spot/point casters are
-  rendered into the same maps, and a point light gets a single-face
-  approximation (documented in `Renderer3D.cpp`).
-* **`WebSocket` on native** supports `ws://`; `wss://` needs a TLS backend that
-  is not vendored. WASM uses the browser's implementation and supports both.
-* **MP3/OGG assets** are decoded by the engine, but no encoder is available here,
-  so the generated audio is WAV; drop `.ogg`/`.mp3` files into `assets/audio/`
-  and the same code paths load them.
+* **Покрытие платформ.** Здесь собран и запущен только бэкенд macOS. Бэкенды
+  Windows (Win32/WGL), Linux (X11/GLX), iOS (UIKit/EAGL), Android (EGL) и Web
+  (Emscripten/WebGL 2) дописаны и прошли синтаксическую проверку со
+  стаб-заголовками; iOS также компилируется с настоящим iPhoneOS SDK. Ни один из
+  них не линковался и не запускался на реальном устройстве в этом окружении.
+* **`--screenshot` в оконном режиме** читает бэкбуфер после present, что у
+  некоторых драйверов возвращает устаревший кадр; headless-захват (`--headless`)
+  точен, именно им сделаны скриншоты самого примера. Пост-обработка работает
+  с `--post`.
+* **MSAA.** Окно запрашивает 4x MSAA и автоматически откатывается, если драйвер
+  отказывает. `Renderer2D` добавляет собственную аналитическую
+  антиалиасинговую кайму на заливки, поэтому 2D остаётся гладким в любом случае.
+* **Пост-обработка** требует `--post`; сцены, которым хотелось бы bloom,
+  сообщают об этом в своём UI, а не имитируют его.
+* **Текст в стиле Slug** рендерит глифы аналитически из контуров без атласа, но
+  это верная реимплементация *техники*, а не библиотеки Slug: глифы батчатся
+  группами по восемь с per-instance юниформами вместо упакованных вершинных
+  записей Slug, drop-тень — маленькое кольцо дрожащих копий вместо настоящего
+  блюра, а depth pre-pass для перекрывающихся глифов отсутствует. Данные
+  кривых/полос лежат в двух текстурах `RGBA32F` (`R32F` семплится нулём на
+  некоторых драйверах GL 3.2).
+* **ASCII-режим** конвертирует *весь* кадр, включая UI, что честно по отношению
+  к устройству символьно-сеточного дисплея, но делает плотные панели виджетов
+  трудночитаемыми. ASCII-игры (Pong, рогалик, космический шутер) рисуют свои
+  символьные сетки и остаются читаемыми.
+* **Lottie** разбор и рендеринг завершены: фигуры, градиенты, trim paths, маски,
+  матты, текст, прекомпы, изинг и пространственные тангенты, с семантикой
+  After Effects для порядка трансформаций, наложения слоёв спереди назад,
+  порядка style/geometry, solid-слоёв и значений по умолчанию для свойств.
+  Шесть сгенерированных примеров рендерятся корректно и покрыты попиксельным
+  тестом.
+* **Воксельный raymarch** — число шагов фиксировано (256, `uMaxSteps`); сцена
+  вместо этого экспонирует разрешение объёма.
+* **Тени Renderer3D** — каскадные карты направленного света; прожекторы и
+  точечные источники рендерятся в те же карты, а точечный свет получает
+  аппроксимацию одной гранью (документировано в `Renderer3D.cpp`).
+* **`WebSocket` на нативе** поддерживает `ws://`; для `wss://` нужен TLS-бэкенд,
+  который не вендорен. WASM использует браузерную реализацию и поддерживает
+  оба.
+* **Ассеты MP3/OGG** декодируются движком, но энкодера здесь нет, поэтому
+  сгенерированный звук — WAV; положите `.ogg`/`.mp3` в `assets/audio/`, и те же
+  пути кода их загрузят.
 
-## Licence
+## Лицензия
 
-The engine code in this repository is original. Vendored third-party files live in
-`engine/third_party/` and keep their own licences (stb: public domain / MIT,
+Код движка в этом репозитории оригинальный. Вендоренные сторонние файлы лежат в
+`engine/third_party/` и сохраняют свои лицензии (stb: public domain / MIT,
 minimp3: CC0).
