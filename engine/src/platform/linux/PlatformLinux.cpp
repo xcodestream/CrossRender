@@ -12,6 +12,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
+#include <sys/resource.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/types.h>
@@ -176,6 +177,22 @@ int CpuCoreCount() {
 // ---------------------------------------------------------------------------
 // Пути
 // ---------------------------------------------------------------------------
+usize ProcessResidentBytes() {
+    std::ifstream statm("/proc/self/statm");
+    u64 total = 0, resident = 0;
+    if (statm >> total >> resident) {
+        return static_cast<usize>(resident * static_cast<u64>(sysconf(_SC_PAGESIZE)));
+    }
+    return 0;
+}
+
+f64 ProcessCpuSeconds() {
+    struct rusage ru{};
+    getrusage(RUSAGE_SELF, &ru);
+    return static_cast<f64>(ru.ru_utime.tv_sec) + ru.ru_utime.tv_usec / 1e6 +
+           static_cast<f64>(ru.ru_stime.tv_sec) + ru.ru_stime.tv_usec / 1e6;
+}
+
 std::string ExecutablePath() {
     char buffer[4096];
     const ssize_t len = readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);

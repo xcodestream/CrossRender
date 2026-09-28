@@ -9,6 +9,7 @@
 #if defined(ENG_PLATFORM_WINDOWS)
 
 #include <windows.h>
+#include <psapi.h>
 #include <commdlg.h>
 #include <shellapi.h>
 
@@ -137,6 +138,25 @@ int CpuCoreCount() {
 // ---------------------------------------------------------------------------
 // Пути
 // ---------------------------------------------------------------------------
+usize ProcessResidentBytes() {
+    PROCESS_MEMORY_COUNTERS_EX pmc{};
+    GetProcessMemoryInfo(GetCurrentProcess(),
+                         reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc), sizeof(pmc));
+    return static_cast<usize>(pmc.WorkingSetSize);
+}
+
+f64 ProcessCpuSeconds() {
+    FILETIME create{}, exit{}, kernel{}, user{};
+    GetProcessTimes(GetCurrentProcess(), &create, &exit, &kernel, &user);
+    auto toSec = [](const FILETIME& ft) {
+        ULARGE_INTEGER v{};
+        v.LowPart = ft.dwLowDateTime;
+        v.HighPart = ft.dwHighDateTime;
+        return static_cast<f64>(v.QuadPart) / 1e7;  // интервалы по 100 нс
+    };
+    return toSec(kernel) + toSec(user);
+}
+
 std::string ExecutablePath() {
     // Увеличиваем буфер, пока путь не поместится; иначе GetModuleFileNameW обрежет.
     std::wstring buffer(MAX_PATH, L'\0');

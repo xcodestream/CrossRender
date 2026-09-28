@@ -16,6 +16,8 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <IOKit/pwr_mgt/IOPMLib.h>
 
+#include <mach/mach.h>
+#include <sys/resource.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/sysctl.h>
@@ -165,6 +167,21 @@ int CpuCoreCount() {
 // ---------------------------------------------------------------------------
 // Пути
 // ---------------------------------------------------------------------------
+usize ProcessResidentBytes() {
+    task_vm_info_data_t info{};
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&info, &count) != KERN_SUCCESS)
+        return 0;
+    return static_cast<usize>(info.resident_size);
+}
+
+f64 ProcessCpuSeconds() {
+    struct rusage ru{};
+    getrusage(RUSAGE_SELF, &ru);
+    return static_cast<f64>(ru.ru_utime.tv_sec) + ru.ru_utime.tv_usec / 1e6 +
+           static_cast<f64>(ru.ru_stime.tv_sec) + ru.ru_stime.tv_usec / 1e6;
+}
+
 std::string ExecutablePath() {
     uint32_t size = 0;
     _NSGetExecutablePath(nullptr, &size);  // возвращает требуемый размер

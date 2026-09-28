@@ -163,6 +163,9 @@ int CpuCoreCount() {
 #endif
 }
 
+usize ProcessResidentBytes() { return 0; }  // на WASM метрики процесса недоступны
+f64 ProcessCpuSeconds() { return 0.0; }
+
 std::string ExecutablePath() {
     // В песочнице браузера нет пути исполняемого файла; wasm-бинарник загружает
     // JS-оболочка. Задокументированное ограничение.

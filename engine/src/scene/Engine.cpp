@@ -7,10 +7,12 @@
 #include "crossrender/core/Log.h"
 #include "crossrender/core/File.h"
 #include "crossrender/text/Font.h"
+#include "text/FontInternal.h"
 #include "crossrender/platform/Window.h"
 #include "crossrender/platform/Platform.h"
 
 #include <algorithm>
+#include <filesystem>
 
 #if defined(ENG_PLATFORM_WASM)
 #include <emscripten.h>
@@ -24,6 +26,9 @@ Engine::~Engine() { Shutdown(); }
 bool Engine::Init(const EngineConfig& config) {
     if (initialised_) return true;
     config_ = config;
+#if !defined(NDEBUG)
+    showDebugOverlay_ = config_.enableDebugOverlay;
+#endif
     LogSetLevel(LogLevel::Debug);
 
     if (!config_.assetsPath.empty()) SetAssetRoot(config_.assetsPath);
@@ -258,6 +263,10 @@ void Engine::Step(f32 dtOverride) {
         window_->PollEvents();
         if (window_->ShouldClose()) quit_ = true;
     }
+#if !defined(NDEBUG)
+    // Scroll Lock переключает отладочный оверлей (только Debug-сборка).
+    if (frameInput.KeyPressed(Key::ScrollLock)) ToggleDebugOverlay();
+#endif
 
     UpdateViewport();
     clock_.Tick();
@@ -387,17 +396,77 @@ void Engine::Step(f32 dtOverride) {
         scenes_.RenderTransition(r2d_, viewport_);
         ui_.EndFrame();
         ui_.RenderOverlays();
-        if (showDebugOverlay_) {
-            char buf[512];
-            std::snprintf(buf, sizeof(buf),
-                          "FPS %.1f    frame %.2f ms\nscene %s   stack %d\ndraw calls %d   2D verts %d\n"
-                          "3D triangles %d   lights %d\nGPU %s",
-                          stats_.fps, stats_.frameMs, scenes_.CurrentName().c_str(),
-                          scenes_.StackDepth(), stats_.drawCalls, stats_.vertices2D,
-                          stats_.triangles, r3d_.LightCount(), gl::QueryGpuInfo().renderer.c_str());
-            ui_.DrawDebugOverlay(buf);
+    }
+#if !defined(NDEBUG)
+    // Отладочный оверлей рисуется движком напрямую через 2D-рендерер и не
+    // зависит от enableUI. Панель - в правом верхнем углу вьюпорта.
+    if (showDebugOverlay_ && defaultFont_) {
+        // Процедурный шрифт, растеризованный ровно под 20px: читаемо и не
+        // зависит ни от каких ассетов. Кэшируется на процесс.
+        static std::unique_ptr<Font> overlayFont;
+        static bool overlayFontTried = false;
+        if (!overlayFontTried) {
+            overlayFontTried = true;
+            FontDesc desc;
+            desc.pixelHeight = 20.0f;
+            desc.sdf = false;
+            overlayFont = textdetail::CreateProceduralFont(desc);
+        }
+        Font& textFont = overlayFont ? *overlayFont : *defaultFont_;
+        const f32 kTextSize = 20.0f;
+        const f32 kLineH = kTextSize * 1.3f;
+        const f64 wall = NowSeconds();
+        const f64 cpu = ProcessCpuSeconds();
+        if (debugWall_ > 0.0) {
+            const f64 dw = wall - debugWall_;
+            if (dw > 1e-6) debugCpuPercent_ =
+                static_cast<f32>((cpu - debugCpu_) / dw * 100.0);
+        }
+        debugWall_ = wall;
+        debugCpu_ = cpu;
+
+        usize exeBytes = 0;
+        {
+            const std::string exe = ExecutablePath();
+            std::error_code ec;
+            if (!exe.empty()) exeBytes = std::filesystem::file_size(exe, ec);
+            if (ec) exeBytes = 0;
+        }
+
+        char lines[6][128];
+        std::snprintf(lines[0], sizeof(lines[0]), "FPS %.0f   frame %.1f ms", stats_.fps,
+                      stats_.frameMs);
+        std::snprintf(lines[1], sizeof(lines[1]), "build Debug   exe %.1f MB",
+                      static_cast<f32>(exeBytes) / (1024.0f * 1024.0f));
+        std::snprintf(lines[2], sizeof(lines[2]), "cpu %.0f%%   rss %.0f MB   res %u",
+                      static_cast<f32>(debugCpuPercent_),
+                      static_cast<f32>(ProcessResidentBytes()) / (1024.0f * 1024.0f),
+                      static_cast<unsigned>(resources_ ? resources_->Count() : 0));
+        std::snprintf(lines[3], sizeof(lines[3]), "scene %s   stack %d",
+                      scenes_.CurrentName().c_str(), scenes_.StackDepth());
+        std::snprintf(lines[4], sizeof(lines[4]), "calls %d   2D verts %d   tris %d",
+                      stats_.drawCalls, stats_.vertices2D, stats_.triangles);
+        std::snprintf(lines[5], sizeof(lines[5]), "GPU %s",
+                      gl::QueryGpuInfo().renderer.c_str());
+
+        constexpr f32 kPad = 8.0f;
+        const Rect vp = viewport_;
+        f32 panelW = 0.0f;
+        for (char* line : lines) {
+            panelW = std::max(panelW, MeasureText(*defaultFont_, line, kTextSize).width);
+        }
+        const f32 panelH = kPad * 2.0f + kLineH * 6.0f + 4.0f;
+        const f32 panelX = vp.x + vp.w - panelW - kPad * 3.0f;
+        const f32 panelY = vp.y + kPad;
+        r2d_.FillRect({panelX, panelY, panelW + kPad * 2.0f + 8.0f, panelH},
+                      Color{0.0f, 0.0f, 0.0f, 0.72f});
+        for (int i = 0; i < 6; ++i) {
+            r2d_.DrawText(textFont, lines[i], panelX + kPad,
+                          panelY + kPad + kLineH * i + 3.0f, Color{0.93f, 0.97f, 0.9f, 1.0f},
+                          kTextSize);
         }
     }
+#endif
     r2d_.EndFrame();
 
     // ---- фильтры + retro resolve ----------------------------------------

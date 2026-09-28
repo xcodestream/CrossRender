@@ -33,6 +33,8 @@ struct EngineConfig {
     bool enableAudio = true;
     bool enableUI = true;
     bool enablePostProcessing = false;
+    // Отладочный оверлей (FPS, размер сборки, память, CPU). Действует только
+    // в Debug-сборке; в Release флаг и Scroll Lock игнорируются.
     bool enableDebugOverlay = false;
     bool enableHotReload = false;
     u32 randomSeed = 1337;
@@ -170,6 +172,9 @@ private:
     std::unique_ptr<RenderTarget> headlessTarget_;
     RenderTarget* EnsureHeadlessTarget(int w, int h);
     std::unique_ptr<class ResourceCache> resources_;
+    f64 debugWall_ = 0.0;     // прошлое время стены для расчёта CPU%
+    f64 debugCpu_ = 0.0;      // прошлое CPU-время процесса
+    f32 debugCpuPercent_ = 0.0f;
     Font* defaultFont_ = nullptr;
     Font* defaultSdfFont_ = nullptr;
     SceneContext ctx_{};

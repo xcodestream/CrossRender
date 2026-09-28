@@ -12,6 +12,7 @@
 
 #if defined(ENG_PLATFORM_ANDROID)
 
+#include <sys/resource.h>
 #include <jni.h>
 #include <unistd.h>
 #include <EGL/egl.h>
@@ -210,6 +211,22 @@ u64 TotalPhysicalMemory() {
 int CpuCoreCount() {
     const long cores = sysconf(_SC_NPROCESSORS_ONLN);
     return cores > 0 ? static_cast<int>(cores) : 1;
+}
+
+usize ProcessResidentBytes() {
+    std::ifstream statm("/proc/self/statm");
+    u64 total = 0, resident = 0;
+    if (statm >> total >> resident) {
+        return static_cast<usize>(resident * static_cast<u64>(sysconf(_SC_PAGESIZE)));
+    }
+    return 0;
+}
+
+f64 ProcessCpuSeconds() {
+    struct rusage ru{};
+    getrusage(RUSAGE_SELF, &ru);
+    return static_cast<f64>(ru.ru_utime.tv_sec) + ru.ru_utime.tv_usec / 1e6 +
+           static_cast<f64>(ru.ru_stime.tv_sec) + ru.ru_stime.tv_usec / 1e6;
 }
 
 std::string ExecutablePath() {

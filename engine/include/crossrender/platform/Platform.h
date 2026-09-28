@@ -40,6 +40,10 @@ int CpuCoreCount();
 std::string ExecutablePath();
 std::string ExecutableDir();
 
+// Метрики процесса для отладочного оверлея (на WASM возвращают 0).
+usize ProcessResidentBytes();  // резидентная память процесса, байт
+f64 ProcessCpuSeconds();       // суммарное процессорное время процесса, секунд
+
 // Приостанавливает вызывающий поток.
 void SleepMs(u32 milliseconds);
 
