@@ -610,6 +610,7 @@ void Window::PollEvents() {
                 impl_->fbWidth = w;
                 impl_->fbHeight = h;
                 crossrender::mtlgl::SurfaceResized((uint32_t)w, (uint32_t)h);
+                if (callbacks.onResize) callbacks.onResize(w, h);
             }
             if (dpi != impl_->dpiScale) {
                 impl_->dpiScale = dpi;

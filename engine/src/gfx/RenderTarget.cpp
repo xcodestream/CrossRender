@@ -424,8 +424,10 @@ void PostProcessor::Resize(int width, int height) {
 }
 
 void PostProcessor::Apply(const Texture& sceneTex, const PostProcessSettings& s, int fbWidth,
-                          int fbHeight, unsigned int targetFbo) {
-    if (!valid_) return;
+                           int fbHeight, unsigned int targetFbo) {
+    if (!valid_) {
+        if (!Init(fbWidth, fbHeight)) return;
+    }
     FullscreenQuad& quad = SharedQuad();
     gl::glDisable(gl::GL_DEPTH_TEST);
     gl::glDepthMask(0);

@@ -102,17 +102,12 @@ bool Engine::Init(const EngineConfig& config) {
         post_.reset(new PostProcessor());
     }
 
-    // Retro-дисплей (pixel art / ASCII) и стекуемая цепочка фильтров.
+    // Retro-дисплей (pixel art / ASCII) и стекуемая цепочка фильтров
+    // инициализируются лениво при первом кадре (BeginFrame/Apply).
     retro_.reset(new RetroDisplay());
-    if (!retro_->Init()) {
-        ENG_LOGW("engine", "retro display unavailable");
-    }
     if (config_.enableFilters) {
         filters_.reset(new FilterChain());
-        if (!filters_->Init()) {
-            ENG_LOGW("engine", "filter chain unavailable");
-            filters_.reset();
-        } else if (config_.filtersDefaultEnabled) {
+        if (config_.filtersDefaultEnabled) {
             FilterChain preset = FilterChain::MakePreset("Clean");
             for (const FilterInstance& f : preset.Filters()) filters_->Add(f);
         }

@@ -1278,9 +1278,7 @@ bool Renderer3D::Init() {
     }
     if (!G.fallbackTexture.CreateSolid(Color::White))
         ENG_LOGW("r3d", "Renderer3D::Init: fallback texture unavailable");
-    if (!G.EnsureShadowMaps(shadows_.directionalMapSize,
-                            Clamp(shadows_.cascadeCount, 1, r3d_internal::kMaxCascades)))
-        ENG_LOGW("r3d", "Renderer3D::Init: shadow maps unavailable; shadows disabled");
+    // Shadow maps выделяются лениво при первом кадре с тенями (EndFrame).
     G.initialized = true;
     ENG_LOGI("r3d", "Renderer3D initialised (maxLights=%d, requested cascades=%d)",
              settings_.maxLights, shadows_.cascadeCount);
