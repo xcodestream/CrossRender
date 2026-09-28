@@ -251,15 +251,16 @@ void RenderTarget::SetDefaultViewport(int width, int height) {
 
 void RenderTarget::Resolve() {
     if (desc_.samples <= 1 || resolveFbo_ == 0) return;
-    // Draw buffers у resolve FBO были настроены при создании; один blit
-    // на весь фреймбуфер разрешает все цветовые подключения.
     gl::glBindFramebuffer(gl::GL_READ_FRAMEBUFFER, fbo_);
     gl::glBindFramebuffer(gl::GL_DRAW_FRAMEBUFFER, resolveFbo_);
-    gl::glBlitFramebuffer(0, 0, desc_.width, desc_.height, 0, 0, desc_.width, desc_.height,
-                          gl::GL_COLOR_BUFFER_BIT, gl::GL_LINEAR);
-    g_currentFbo = 0;
-    gl::glBindFramebuffer(gl::GL_FRAMEBUFFER, 0);
-    g_fboStack.clear();
+    for (int i = 0; i < desc_.colorAttachments; ++i) {
+        const auto attachment = static_cast<gl::GLenum>(gl::GL_COLOR_ATTACHMENT0 + i);
+        gl::glReadBuffer(attachment);
+        gl::glDrawBuffer(attachment);
+        gl::glBlitFramebuffer(0, 0, desc_.width, desc_.height, 0, 0, desc_.width, desc_.height,
+                              gl::GL_COLOR_BUFFER_BIT, gl::GL_LINEAR);
+    }
+    gl::glBindFramebuffer(gl::GL_FRAMEBUFFER, g_currentFbo);
 }
 
 unsigned int RenderTarget::boundFboStackTop() { return g_currentFbo; }

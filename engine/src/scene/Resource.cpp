@@ -12,9 +12,8 @@ Texture* ResourceCache::Texture_(const std::string& path, bool srgb) {
     Entry<Texture> e;
     e.path = path;
     e.value.reset(new Texture());
-    std::string resolved = PathJoin(assetRoot_, path);
-    if (!e.value->LoadFromFile(resolved, srgb)) {
-        ENG_LOGE("res", "texture '%s' failed to load", resolved.c_str());
+    if (!e.value->LoadFromFile(path, srgb)) {
+        ENG_LOGE("res", "texture '%s' failed to load", path.c_str());
         return nullptr;
     }
     e.value->SetDebugName(path);
@@ -33,9 +32,8 @@ Font* ResourceCache::Font_(const std::string& path, const FontDesc& desc) {
     Entry<Font> e;
     e.path = path;
     e.value.reset(new Font());
-    std::string resolved = PathJoin(assetRoot_, path);
-    if (!e.value->LoadFromFile(resolved, desc)) {
-        ENG_LOGE("res", "font '%s' failed to load", resolved.c_str());
+    if (!e.value->LoadFromFile(path, desc)) {
+        ENG_LOGE("res", "font '%s' failed to load", path.c_str());
         return nullptr;
     }
     e.timestamp = FS().FileTime(path);
@@ -50,9 +48,8 @@ Model* ResourceCache::Model_(const std::string& path) {
     Entry<Model> e;
     e.path = path;
     e.value.reset(new Model());
-    std::string resolved = PathJoin(assetRoot_, path);
-    if (!e.value->Load(resolved)) {
-        ENG_LOGE("res", "model '%s' failed to load", resolved.c_str());
+    if (!e.value->Load(path)) {
+        ENG_LOGE("res", "model '%s' failed to load", path.c_str());
         return nullptr;
     }
     e.value->UploadToGpu();
@@ -68,9 +65,8 @@ AudioClip* ResourceCache::Audio_(const std::string& path) {
     Entry<AudioClip> e;
     e.path = path;
     e.value.reset(new AudioClip());
-    std::string resolved = PathJoin(assetRoot_, path);
-    if (!e.value->LoadFromFile(resolved)) {
-        ENG_LOGE("res", "audio '%s' failed to load", resolved.c_str());
+    if (!e.value->LoadFromFile(path)) {
+        ENG_LOGE("res", "audio '%s' failed to load", path.c_str());
         return nullptr;
     }
     e.timestamp = FS().FileTime(path);
@@ -85,9 +81,8 @@ Shader* ResourceCache::Shader_(const std::string& basePath) {
     Entry<Shader> e;
     e.path = basePath;
     e.value.reset(new Shader());
-    std::string base = PathJoin(assetRoot_, basePath);
-    if (!e.value->Load(base)) {
-        ENG_LOGE("res", "shader '%s' failed to load", base.c_str());
+    if (!e.value->Load(basePath)) {
+        ENG_LOGE("res", "shader '%s' failed to load", basePath.c_str());
         return nullptr;
     }
     Shader* raw = e.value.get();
@@ -141,20 +136,40 @@ Texture* ResourceCache::NormalFlatTexture() {
 
 int ResourceCache::ReloadChanged() {
     int reloaded = 0;
-    auto refresh = [&](auto& map) {
-        for (auto& kv : map) {
-            if (kv.second.path.empty()) continue;
-            i64 t = FS().FileTime(kv.second.path);
-            if (t != 0 && kv.second.timestamp != 0 && t != kv.second.timestamp) {
-                ++reloaded;
-                kv.second.timestamp = t;
-            }
+    for (auto& kv : textures_) {
+        Entry<Texture>& e = kv.second;
+        const i64 t = FS().FileTime(e.path);
+        const bool srgb = kv.first.size() >= 5 && kv.first.compare(kv.first.size() - 5, 5, "|srgb") == 0;
+        if (t != 0 && e.timestamp != 0 && t != e.timestamp && e.value->LoadFromFile(e.path, srgb)) {
+            e.timestamp = t;
+            ++reloaded;
         }
-    };
-    refresh(textures_);
-    refresh(models_);
-    refresh(audio_);
-    (void)reloaded;
+    }
+    for (auto& kv : fonts_) {
+        Entry<Font>& e = kv.second;
+        const i64 t = FS().FileTime(e.path);
+        if (t != 0 && e.timestamp != 0 && t != e.timestamp && e.value->LoadFromFile(e.path, e.value->Desc())) {
+            e.timestamp = t;
+            ++reloaded;
+        }
+    }
+    for (auto& kv : models_) {
+        Entry<Model>& e = kv.second;
+        const i64 t = FS().FileTime(e.path);
+        if (t != 0 && e.timestamp != 0 && t != e.timestamp && e.value->Load(e.path)) {
+            e.value->UploadToGpu();
+            e.timestamp = t;
+            ++reloaded;
+        }
+    }
+    for (auto& kv : audio_) {
+        Entry<AudioClip>& e = kv.second;
+        const i64 t = FS().FileTime(e.path);
+        if (t != 0 && e.timestamp != 0 && t != e.timestamp && e.value->LoadFromFile(e.path)) {
+            e.timestamp = t;
+            ++reloaded;
+        }
+    }
     if (reloaded > 0) ENG_LOGI("res", "%d resources changed on disk", reloaded);
     return reloaded;
 }

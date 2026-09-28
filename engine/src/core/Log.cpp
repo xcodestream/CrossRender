@@ -90,7 +90,9 @@ void LogWrite(LogLevel level, const char* category, const char* fmt, ...) {
     usize len = std::strlen(buffer);
     while (len > 0 && (buffer[len - 1] == '\n' || buffer[len - 1] == '\r')) buffer[--len] = '\0';
 
-    std::lock_guard<std::mutex> lock(g_logMutex);
+    std::vector<std::pair<LogSink, void*>> sinks;
+    {
+        std::lock_guard<std::mutex> lock(g_logMutex);
     std::fprintf(stderr, "%s[%s] %-7s %s\x1b[0m\n", LevelColor(level), category ? category : "crossrender",
                  LevelName(level), buffer);
     std::fflush(stderr);
@@ -98,8 +100,10 @@ void LogWrite(LogLevel level, const char* category, const char* fmt, ...) {
     if (g_historyEnabled) {
         g_history.push_back(std::string("[") + LevelName(level) + "] " + buffer);
         if (g_history.size() > kMaxHistory) g_history.erase(g_history.begin());
+        }
+        sinks = g_sinks;
     }
-    for (auto& sink : g_sinks) {
+    for (auto& sink : sinks) {
         if (sink.first) sink.first(level, category, buffer, sink.second);
     }
 }
