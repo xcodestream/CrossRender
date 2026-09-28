@@ -230,14 +230,16 @@ const u8* FindEocd(const ByteBuffer& zip, u16* count, u32* cdSize, u32* cdOfs) {
     if (n < 22) return nullptr;
     const usize maxBack = n < 22 + 65535 ? n : 22 + 65535;
     const u8* base = zip.data();
-    for (usize i = n - 22 + 1; i-- > n - maxBack;) {
-        if (Read32(base + i) != 0x06054b50) continue;
-        // Комментарий должен заканчиваться ровно на конце файла.
-        if (i + 22 + Read16(base + i + 20) != n) continue;
-        *count = Read16(base + i + 10);
-        *cdSize = Read32(base + i + 12);
-        *cdOfs = Read32(base + i + 16);
-        return base + i;
+    const usize first = n - maxBack;
+    for (usize i = n - 22;; --i) {
+        if (Read32(base + i) == 0x06054b50 &&
+            i + 22 + Read16(base + i + 20) == n) {
+            *count = Read16(base + i + 10);
+            *cdSize = Read32(base + i + 12);
+            *cdOfs = Read32(base + i + 16);
+            return base + i;
+        }
+        if (i == first) break;
     }
     return nullptr;
 }
@@ -251,7 +253,7 @@ bool ParseCentralDirectory(const ByteBuffer& zip, std::vector<ZipEntry>* out) {
         return false;
     }
     const usize n = zip.size();
-    if (static_cast<usize>(cdOfs) + cdSize > n) return false;
+    if (static_cast<usize>(cdOfs) > n || cdSize > n - static_cast<usize>(cdOfs)) return false;
     const u8* p = zip.data() + cdOfs;
     for (u16 i = 0; i < count; ++i) {
         if (p + 46 > zip.data() + n || Read32(p) != 0x02014b50) return false;
@@ -264,9 +266,14 @@ bool ParseCentralDirectory(const ByteBuffer& zip, std::vector<ZipEntry>* out) {
         u16 extraLen = Read16(p + 30);
         u16 commentLen = Read16(p + 32);
         entry.localOffset = Read32(p + 42);
-        if (p + 46 + nameLen > zip.data() + n) return false;
+        const usize offset = static_cast<usize>(p - zip.data());
+        const usize directoryEnd = static_cast<usize>(cdOfs) + cdSize;
+        if (offset > directoryEnd || 46 > directoryEnd - offset) return false;
+        const usize recordSize = 46u + static_cast<usize>(nameLen) +
+                                 static_cast<usize>(extraLen) + static_cast<usize>(commentLen);
+        if (recordSize > directoryEnd - offset) return false;
         entry.name.assign(reinterpret_cast<const char*>(p + 46), nameLen);
-        p += 46 + nameLen + extraLen + commentLen;
+        p += recordSize;
         out->push_back(std::move(entry));
     }
     return true;
@@ -312,11 +319,12 @@ bool ZipReadFile(const ByteBuffer& zip, const std::string& name, ByteBuffer* out
     }
     const usize n = zip.size();
     usize off = found->localOffset;
-    if (off + 30 > n || Read32(zip.data() + off) != 0x04034b50) return false;
+    if (off > n || 30 > n - off || Read32(zip.data() + off) != 0x04034b50) return false;
     u16 nameLen = Read16(zip.data() + off + 26);
     u16 extraLen = Read16(zip.data() + off + 28);
-    usize dataAt = off + 30u + nameLen + extraLen;
-    if (dataAt + found->compressedSize > n) return false;
+    if (nameLen > n - off - 30u || extraLen > n - off - 30u - nameLen) return false;
+    const usize dataAt = off + 30u + nameLen + extraLen;
+    if (found->compressedSize > n - dataAt) return false;
     const u8* data = zip.data() + dataAt;
     if (found->method == 0) {
         if (found->compressedSize != found->uncompressedSize) return false;

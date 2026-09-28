@@ -5,6 +5,7 @@
 #include "crossrender/core/File.h"
 
 #include <algorithm>
+#include <limits>
 
 // stb_image / stb_image_write инстанцируются в engine/third_party/stb_impl.c;
 // здесь нужны только объявления.
@@ -226,7 +227,8 @@ bool Texture::CreateCubemap(int size, PixelFormat format, const void* const face
 }
 
 bool Texture::DecodeImage(const void* data, usize size, ImageData* out, bool flipVertically) {
-    if (!data || size == 0 || !out) return false;
+    if (!data || size == 0 || size > static_cast<usize>(std::numeric_limits<int>::max()) || !out)
+        return false;
     int w = 0, h = 0, comp = 0;
     stbi_set_flip_vertically_on_load(flipVertically ? 1 : 0);
     stbi_uc* pixels = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(data),
@@ -278,6 +280,7 @@ bool Texture::CreateSolid(const Color& c) {
 }
 
 bool Texture::CreateCheckerboard(int size, Color a, Color b) {
+    if (size <= 0) return false;
     std::vector<u8> pixels(static_cast<usize>(size) * size * 4);
     int cell = size / 8 > 0 ? size / 8 : 1;
     for (int y = 0; y < size; ++y) {

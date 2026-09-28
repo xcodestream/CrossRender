@@ -112,6 +112,14 @@ ENG_TEST(Zip, CorruptArchiveFails) {
     ENG_CHECK(!ZipReadFile(garbled, "data/table.bin", &out));
 }
 
+ENG_TEST(Zip, EmptyArchiveAtOffsetZero) {
+    const u8 empty[] = {0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0,
+                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<std::string> names;
+    ENG_CHECK(ZipListEntries(ByteBuffer(std::begin(empty), std::end(empty)), &names));
+    ENG_CHECK(names.empty());
+}
+
 ENG_TEST(Inflate, RejectsGarbage) {
     ByteBuffer out;
     const u8 junk[] = {0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00};

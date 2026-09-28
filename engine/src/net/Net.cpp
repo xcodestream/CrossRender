@@ -630,6 +630,9 @@ int WsParseFrame(const u8* data, usize size, usize* consumed, WsFrame* out) {
 
     const bool control = (opcode & 0x08u) != 0;
     if (control && (!fin || len > 125)) return -1;
+    if (opcode == kWsClose && len == 1) return -1;
+    constexpr u64 kMaxWsPayload = 16ull * 1024ull * 1024ull;
+    if (len > kMaxWsPayload) return -1;
 
     u8 maskBytes[4] = {0, 0, 0, 0};
     if (masked) {
@@ -1868,6 +1871,7 @@ bool ReadHttpResponse(EngSocket fd, std::vector<u8>* raw, std::string* err) {
     i64 contentLength = -1;
     bool chunked = false;
     usize headerEnd = 0;
+    constexpr usize kMaxHttpResponse = 64u * 1024u * 1024u;
 
     for (;;) {
         if (headersSeen) {
@@ -1905,6 +1909,10 @@ bool ReadHttpResponse(EngSocket fd, std::vector<u8>* raw, std::string* err) {
             return false;
         }
         raw->insert(raw->end(), scratch.begin(), scratch.begin() + n);
+        if (raw->size() > kMaxHttpResponse) {
+            if (err) *err = "http response body too large";
+            return false;
+        }
         if (!headersSeen) {
             const char* b = reinterpret_cast<const char*>(raw->data());
             const char* e = b + raw->size();
@@ -1916,7 +1924,16 @@ bool ReadHttpResponse(EngSocket fd, std::vector<u8>* raw, std::string* err) {
                 const std::string lower = ToLowerAscii(header);
                 const usize cl = lower.find("content-length:");
                 if (cl != std::string::npos) {
-                    contentLength = std::atoll(header.c_str() + cl + 15);
+                    const char* value = header.c_str() + cl + 15;
+                    char* end = nullptr;
+                    errno = 0;
+                    const long long parsed = std::strtoll(value, &end, 10);
+                    if (errno != 0 || end == value || parsed < 0 ||
+                        static_cast<unsigned long long>(parsed) > kMaxHttpResponse) {
+                        if (err) *err = "invalid or oversized Content-Length";
+                        return false;
+                    }
+                    contentLength = parsed;
                 }
                 if (lower.find("transfer-encoding:") != std::string::npos &&
                     lower.find("chunked") != std::string::npos) {
@@ -1942,11 +1959,18 @@ bool DecodeChunked(const std::vector<u8>& body, std::vector<u8>* out) {
         }();
         if (lineEnd >= body.size()) return false;
         const std::string sizeLine(reinterpret_cast<const char*>(body.data()) + i, lineEnd - i);
-        const u64 chunkSize =
-            std::strtoull(sizeLine.c_str(), nullptr, 16);
+        const usize semicolon = sizeLine.find(';');
+        const std::string sizeToken = sizeLine.substr(0, semicolon);
+        if (sizeToken.empty()) return false;
+        char* end = nullptr;
+        errno = 0;
+        const u64 chunkSize = std::strtoull(sizeToken.c_str(), &end, 16);
+        if (errno != 0 || end != sizeToken.c_str() + sizeToken.size()) return false;
         i = lineEnd + 2;
         if (chunkSize == 0) return true;
-        if (i + chunkSize > body.size()) return false;
+        constexpr usize kMaxChunkedBody = 64u * 1024u * 1024u;
+        if (i > body.size() || chunkSize > body.size() - i || out->size() > kMaxChunkedBody ||
+            chunkSize > kMaxChunkedBody - out->size()) return false;
         out->insert(out->end(), body.begin() + static_cast<std::ptrdiff_t>(i),
                     body.begin() + static_cast<std::ptrdiff_t>(i + chunkSize));
         i += static_cast<usize>(chunkSize);

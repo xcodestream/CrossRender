@@ -127,23 +127,34 @@ private:
 
     bool ParseNumber(JsonValue* out) {
         usize start = pos_;
-        if (pos_ < s_.size() && (s_[pos_] == '-' || s_[pos_] == '+')) ++pos_;
+        if (pos_ < s_.size() && s_[pos_] == '-') ++pos_;
         bool any = false;
-        while (pos_ < s_.size() && s_[pos_] >= '0' && s_[pos_] <= '9') {
+        if (pos_ < s_.size() && s_[pos_] == '0') {
             ++pos_;
             any = true;
-        }
-        if (pos_ < s_.size() && s_[pos_] == '.') {
-            ++pos_;
+            if (pos_ < s_.size() && s_[pos_] >= '0' && s_[pos_] <= '9')
+                return Fail("leading zero in number");
+        } else {
             while (pos_ < s_.size() && s_[pos_] >= '0' && s_[pos_] <= '9') {
                 ++pos_;
                 any = true;
             }
         }
+        if (pos_ < s_.size() && s_[pos_] == '.') {
+            ++pos_;
+            const usize fractionStart = pos_;
+            while (pos_ < s_.size() && s_[pos_] >= '0' && s_[pos_] <= '9') {
+                ++pos_;
+                any = true;
+            }
+            if (pos_ == fractionStart) return Fail("digits required after decimal point");
+        }
         if (any && pos_ < s_.size() && (s_[pos_] == 'e' || s_[pos_] == 'E')) {
             ++pos_;
             if (pos_ < s_.size() && (s_[pos_] == '-' || s_[pos_] == '+')) ++pos_;
+            const usize exponentStart = pos_;
             while (pos_ < s_.size() && s_[pos_] >= '0' && s_[pos_] <= '9') ++pos_;
+            if (pos_ == exponentStart) return Fail("digits required after exponent");
         }
         if (!any) return Fail("invalid number");
         // Ключевые слова NaN / Infinity невалидны для JSON, но встречаются на практике.
@@ -203,9 +214,13 @@ private:
                                 lo |= static_cast<u32>(h - 'a' + 10);
                             else if (h >= 'A' && h <= 'F')
                                 lo |= static_cast<u32>(h - 'A' + 10);
+                            else
+                                return Fail("bad hex digit in low surrogate");
                         }
-                        cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
-                    }
+                         if (lo < 0xDC00 || lo > 0xDFFF) return Fail("invalid low surrogate");
+                         cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                     }
+                     if (cp >= 0xD800 && cp <= 0xDFFF) return Fail("unpaired surrogate");
                     // Кодирование в UTF-8
                     if (cp < 0x80) {
                         out->push_back(static_cast<char>(cp));

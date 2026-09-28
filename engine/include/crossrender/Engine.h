@@ -177,6 +177,7 @@ private:
     Rect viewport_;
     f32 dpiScale_ = 1;
     bool quit_ = false, paused_ = false, showDebugOverlay_ = false, initialised_ = false;
+    bool platformInitialised_ = false, glContextCreated_ = false, glFunctionsLoaded_ = false;
     void* user_ = nullptr;
     // Состояние ввода при работе в headless-режиме (без окна).
     Input headlessInput_;

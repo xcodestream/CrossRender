@@ -382,6 +382,10 @@ if(CR_BUILD_TESTS)
     add_executable(crossrender_tests ${CR_TEST_SOURCES})
     target_link_libraries(crossrender_tests PRIVATE crossrender)
     target_include_directories(crossrender_tests PRIVATE ${CR_SRC_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/examples/sources ${CR_ENGINE_DIR}/metal)
+    if(CR_ASAN)
+        target_compile_options(crossrender_tests PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_link_options(crossrender_tests PRIVATE -fsanitize=address,undefined)
+    endif()
     set_target_properties(crossrender_tests PROPERTIES
         OUTPUT_NAME "tests"
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin

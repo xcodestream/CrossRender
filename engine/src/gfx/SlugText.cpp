@@ -98,7 +98,7 @@ namespace {
 // ---------------------------------------------------------------------------
 constexpr int kMaxCurvesPerBand = 128;  // == SLUG_MAX_CURVES_PER_BAND в GLSL
 constexpr int kMinBandCount = 8;
-constexpr int kMaxBandCount = 16;
+constexpr int kMaxBandCount = 64;
 
 constexpr int kCurveColumns = 4;  // текселей в строке (2 кривые)
 constexpr int kBandColumns = 4;   // текселей в строке (2 полосы)
@@ -774,7 +774,9 @@ bool SlugTextRenderer::PrepareGlyph(u32 codepoint) {
     // и строку из абсолютного индекса. Ранняя ревизия давала каждому глифу
     // прямоугольный блок со служебной полосой на каждом конце, из-за чего
     // каждый поиск сдвигался на одну полосу и шейдер читал служебную.
-    const int bandCount = Clamp(static_cast<int>(local.size()) / 4, kMinBandCount, kMaxBandCount);
+    const int requiredBands = static_cast<int>((local.size() + kMaxCurvesPerBand - 1) /
+                                                kMaxCurvesPerBand);
+    const int bandCount = Clamp(requiredBands, kMinBandCount, kMaxBandCount);
     const int bandBase = bandCursor_;
     if (bandCursor_ + bandCount > impl_->bandCapacity) {
         if (!impl_->bandBudgetWarned) {
@@ -962,6 +964,7 @@ namespace {
 
 struct GlyphDraw {
     const SlugGlyph* glyph = nullptr;
+    u32 codepoint = 0;
     Vec2 origin{0, 0};   // позиция пера, переведённая в логические пиксели
     f32 rotation = 0.0f;
     Vec2 scale{1, 1};
@@ -1072,6 +1075,7 @@ f32 SlugTextRenderer::Draw(Renderer2D& r2d, const std::string& utf8, Vec2 baseli
         if (!g->empty) {
             GlyphDraw gd;
             gd.glyph = g;
+            gd.codepoint = cp;
             // gd.origin — позиция ПЕРА в логических пикселях. Submit() добавляет
             // собственный центр глифа в em-пространстве через базисные векторы,
             // поэтому центр НЕ нужно учитывать здесь ещё раз (иначе каждый глиф
@@ -1090,6 +1094,9 @@ f32 SlugTextRenderer::Draw(Renderer2D& r2d, const std::string& utf8, Vec2 baseli
     }
 
     const f32 advance = pen;
+    // PrepareGlyph may reallocate the glyph storage while the run is built;
+    // resolve pointers only after all glyphs have been prepared.
+    for (GlyphDraw& gd : list) gd.glyph = GetGlyph(gd.codepoint);
     Flush();
     if (list.empty() || !Valid()) return advance * pixelSize;
 

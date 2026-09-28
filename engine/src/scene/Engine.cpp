@@ -36,6 +36,7 @@ bool Engine::Init(const EngineConfig& config) {
         ENG_LOGE("engine", "platform init failed");
         return false;
     }
+    platformInitialised_ = true;
 
     void* (*glProc)(const char*) = nullptr;
 
@@ -44,6 +45,7 @@ bool Engine::Init(const EngineConfig& config) {
             ENG_LOGE("engine", "headless GL context unavailable");
             return false;
         }
+        glContextCreated_ = true;
         glProc = HeadlessGLGetProcAddress;
     } else {
         window_.reset(new Window());
@@ -69,6 +71,7 @@ bool Engine::Init(const EngineConfig& config) {
         ENG_LOGE("engine", "failed to load OpenGL entry points");
         return false;
     }
+    glFunctionsLoaded_ = true;
     gl::GpuInfo gpu = gl::QueryGpuInfo();
     ENG_LOGI("engine", "GPU: %s | %s", gpu.renderer.c_str(), gpu.version.c_str());
     ENG_LOGI("engine", "GLSL: %s", gpu.glslVersion.c_str());
@@ -133,12 +136,13 @@ bool Engine::Init(const EngineConfig& config) {
 }
 
 void Engine::Shutdown() {
-    if (!initialised_) return;
-    scenes_.Reset();
-    if (config_.enableAudio) Audio::Get().Shutdown();
-    ui_.Shutdown();
-    r3d_.Shutdown();
-    r2d_.Shutdown();
+    if (initialised_) scenes_.Reset();
+    if (initialised_ && config_.enableAudio) Audio::Get().Shutdown();
+    if (initialised_) {
+        ui_.Shutdown();
+        r3d_.Shutdown();
+        r2d_.Shutdown();
+    }
     filters_.reset();
     scratch_.reset();
     if (retro_) {
@@ -156,9 +160,12 @@ void Engine::Shutdown() {
         window_->Destroy();
         window_.reset();
     }
-    if (config_.headless) DestroyHeadlessGLContext();
-    gl::UnloadFunctions();
-    PlatformShutdown();
+    if (glContextCreated_ && config_.headless) DestroyHeadlessGLContext();
+    if (glFunctionsLoaded_) gl::UnloadFunctions();
+    if (platformInitialised_) PlatformShutdown();
+    glContextCreated_ = false;
+    glFunctionsLoaded_ = false;
+    platformInitialised_ = false;
     initialised_ = false;
 }
 

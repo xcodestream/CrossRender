@@ -3902,8 +3902,6 @@ bool RenderGlyphToBitmap(Font::Impl* impl, const CffFont* cff, u32 gid, const Fo
 
     f32 minX = 0, minY = 0, maxX = 0, maxY = 0;
     if (!cmds.empty()) ComputeBox(cmds, &minX, &minY, &maxX, &maxY);
-    const f32 atlasLimit = static_cast<f32>(std::max<int>(desc.atlasSize, 8));
-
     // Заявленные в спеке 4x вертикальных суперсэмпла соответствуют дефолтному
     // `oversample` = 2; горизонтальное покрытие считается аналитически (точное
     // покрытие отрезком), что заменяет горизонтальную выборку.
@@ -3924,32 +3922,14 @@ bool RenderGlyphToBitmap(Font::Impl* impl, const CffFont* cff, u32 gid, const Fo
             get->blank = true;
             return true;
         }
-        bool scaled = false;
-        f32 s = 1.0f;
-        if (wF > atlasLimit - 2.0f || hF > atlasLimit - 2.0f) {
-            f32 fit = (atlasLimit - 2.0f) / std::max(wF, hF);
-            s = fit < 0.05f ? 0.05f : fit;
-            scaled = true;
-        }
-        std::vector<Cmd> sdfCmds;
+        // Keep the SDF in the same pixel coordinate system as the page metadata.
+        // A glyph may require a page larger than the nominal atlas size; shrinking
+        // it here would make the stored spread inconsistent with the shader.
         const std::vector<Cmd>* use = &cmds;
-        f32 oX = bx0, oY = by0;
-        f32 sp = spread;
-        if (scaled) {
-            sdfCmds = cmds;
-            for (Cmd& c : sdfCmds) {
-                for (Vec2f& p : c.p) {
-                    p.x *= s;
-                    p.y *= s;
-                }
-            }
-            use = &sdfCmds;
-            oX = std::floor(minX * s);
-            oY = std::floor(minY * s);
-            sp = spread * s;
-        }
-        int w = static_cast<int>(std::ceil((scaled ? maxX * s : maxX) + sp - oX)) + 1;
-        int h = static_cast<int>(std::ceil((scaled ? maxY * s : maxY) + sp - oY)) + 1;
+        const f32 oX = bx0, oY = by0;
+        const f32 sp = spread;
+        int w = static_cast<int>(std::ceil(maxX + sp - oX)) + 1;
+        int h = static_cast<int>(std::ceil(maxY + sp - oY)) + 1;
         if (w < 1) w = 1;
         if (h < 1) h = 1;
         std::vector<Cmd> pixelSpace;
@@ -3967,12 +3947,12 @@ bool RenderGlyphToBitmap(Font::Impl* impl, const CffFont* cff, u32 gid, const Fo
         get->bitmap = std::move(sdf);
         get->width = w;
         get->height = h;
-        f32 inv = scaled ? 1.0f / s : 1.0f;
-        get->bearingX = oX * inv;
-        get->bearingY = -oY * inv;
+        get->bearingX = oX;
+        get->bearingY = -oY;
         return true;
     }
 
+    const f32 atlasLimit = static_cast<f32>(std::max<int>(desc.atlasSize, 8));
     // Битмапный режим: целочисленный бокс, включающий протяжённости чернил.
     int w = static_cast<int>(std::ceil(maxX)) - static_cast<int>(std::floor(minX));
     int h = static_cast<int>(std::ceil(maxY)) - static_cast<int>(std::floor(minY));
@@ -4035,7 +4015,13 @@ bool RenderGlyphToBitmap(Font::Impl* impl, const CffFont* cff, u32 gid, const Fo
 // при первом вызове GetGlyph(), которому реально нужно выгрузить пиксели.
 bool EnsurePageTexture(FontAtlasPage* page, const FontDesc& desc) {
     if (page->texture.Valid()) return true;
-    page->texture.Create(page->size, page->size, PixelFormat::RGBA8, nullptr, TextureFilter::Linear,
+    std::vector<u8> outside;
+    const void* initial = nullptr;
+    if (desc.sdf) {
+        outside.assign(static_cast<usize>(page->size) * static_cast<usize>(page->size) * 4, 255);
+        initial = outside.data();
+    }
+    page->texture.Create(page->size, page->size, PixelFormat::RGBA8, initial, TextureFilter::Linear,
                          TextureWrap::ClampToEdge, false);
     if (!page->texture.Valid()) return false;
     page->texture.SetDebugName("font-atlas");
@@ -4095,7 +4081,13 @@ bool EnsurePage(Font* font, Font::Impl* impl, int neededW, int neededH, bool* te
     page.size = static_cast<int>(std::max<u32>(desc.atlasSize, 16));
     if (page.size < neededW + gap) page.size = neededW + gap;
     if (page.size < neededH + gap) page.size = neededH + gap;
-    page.texture.Create(page.size, page.size, PixelFormat::RGBA8, nullptr, TextureFilter::Linear,
+    std::vector<u8> outside;
+    const void* initial = nullptr;
+    if (desc.sdf) {
+        outside.assign(static_cast<usize>(page.size) * static_cast<usize>(page.size) * 4, 255);
+        initial = outside.data();
+    }
+    page.texture.Create(page.size, page.size, PixelFormat::RGBA8, initial, TextureFilter::Linear,
                         TextureWrap::ClampToEdge, false);
     page.texture.SetDebugName("font-atlas");
     page.texture.SetSdfParams(desc.sdf ? desc.sdfSpread : 0.0f, desc.pixelHeight);
@@ -4295,6 +4287,39 @@ bool ProcRender(Font::Impl* impl, u32 codepoint, const FontDesc& desc, RenderedG
             }
         }
         bmp.swap(sheared);
+    }
+    if (desc.sdf) {
+        const int spread = std::max(1, static_cast<int>(std::ceil(std::max(desc.sdfSpread, 1.0f))));
+        const int sw = w + spread * 2;
+        const int sh = h + spread * 2;
+        std::vector<u8> sdf(static_cast<usize>(sw) * static_cast<usize>(sh), 255);
+        for (int sy = 0; sy < sh; ++sy) {
+            for (int sx = 0; sx < sw; ++sx) {
+                const int x = sx - spread;
+                const int y = sy - spread;
+                const bool in = x >= 0 && x < w && y >= 0 && y < h &&
+                                bmp[static_cast<usize>(y) * static_cast<usize>(w) + static_cast<usize>(x)] >= 128;
+                f32 best = static_cast<f32>(spread);
+                for (int yy = std::max(0, y - spread); yy < std::min(h, y + spread + 1); ++yy) {
+                    for (int xx = std::max(0, x - spread); xx < std::min(w, x + spread + 1); ++xx) {
+                        const bool other = bmp[static_cast<usize>(yy) * static_cast<usize>(w) + static_cast<usize>(xx)] >= 128;
+                        if (other == in) continue;
+                        const f32 dx = static_cast<f32>(xx - x);
+                        const f32 dy = static_cast<f32>(yy - y);
+                        best = std::min(best, std::sqrt(dx * dx + dy * dy));
+                    }
+                }
+                const f32 value = in ? 128.0f - best * 127.0f / static_cast<f32>(spread)
+                                     : 128.0f + best * 127.0f / static_cast<f32>(spread);
+                sdf[static_cast<usize>(sy) * static_cast<usize>(sw) + static_cast<usize>(sx)] =
+                    static_cast<u8>(Clamp(value, 0.0f, 255.0f));
+            }
+        }
+        bmp.swap(sdf);
+        w = sw;
+        h = sh;
+        rg->bearingX -= static_cast<f32>(spread);
+        rg->bearingY += static_cast<f32>(spread);
     }
     impl->procOutline = bmp;
     rg->bitmap = std::move(bmp);
