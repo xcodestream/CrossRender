@@ -544,8 +544,10 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
         while ((hit = body.find(from)) != std::string::npos) body.replace(hit, from.size(), to);
         const std::string fromSp = "texture(" + u.name + " ,";
         while ((hit = body.find(fromSp)) != std::string::npos) body.replace(hit, fromSp.size(), to);
-        while ((hit = preambleCode.find(from)) != std::string::npos) preambleCode.replace(hit, from.size(), to);
-        while ((hit = preambleCode.find(fromSp)) != std::string::npos) preambleCode.replace(hit, fromSp.size(), to);
+        while ((hit = preambleCode.find(from)) != std::string::npos)
+            preambleCode.replace(hit, from.size(), to);
+        while ((hit = preambleCode.find(fromSp)) != std::string::npos)
+            preambleCode.replace(hit, fromSp.size(), to);
     }
     body = RewriteTexelFetch(body);
 
@@ -565,7 +567,8 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
 
     if (stage == ShaderStage::Vertex) {
         body = ReplaceWord(body, "gl_Position", "out.position");
-        for (const MSLAttribute& a : decls.attributes) body = ReplaceWord(body, a.name, "in_." + a.name);
+        for (const MSLAttribute& a : decls.attributes)
+            body = ReplaceWord(body, a.name, "in_." + a.name);
         for (size_t i = 0; i < decls.varyingOutNames.size(); ++i) {
             body = ReplaceWord(body, decls.varyingOutNames[i], "out." + decls.varyingOutNames[i]);
         }
@@ -583,15 +586,15 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
             preambleCode = ReplaceWord(preambleCode, u.name, "_u." + u.name);
         }
     }
-    // GL рендерит в NDC с y вверх; в Metal y смотрит вниз. Отразить один раз на
-    // вершину, чтобы транслированная геометрия совпадала со GL-сборкой.
-    if (stage == ShaderStage::Vertex) {
-        // NOTE: отражения y NDC нет - NDC Metal совпадает с GL для этого конвейера.
-    }
+    // NOTE: отражения y NDC нет - NDC Metal совпадает с GL для этого конвейера.
 
-    // ---- проход хелперов ------------------------------------------------------
     const char* blockName = stage == ShaderStage::Vertex ? "UniformsVS" : "UniformsFS";
     const std::string blockParam = std::string("constant ") + blockName + "& _u";
+
+    // ---- проход хелперов ------------------------------------------------------
+    // Хелперы в MSL не видят uniform-блок и текстуры: каждому хелперу, чьё тело
+    // использует ресурсы, добавляются хвостовые параметры; места вызовов
+    // дополняются соответственно. GLSL out-параметры -> thread T&.
     {
         const auto isWordChar = [](char c) {
             return std::isalnum((unsigned char)c) || c == '_';
@@ -610,7 +613,7 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
 
         struct HelperInfo {
             std::string name;
-            std::vector<const MSLUniform*> samplers;  // sampler-юниформы в теле
+            std::vector<const MSLUniform*> samplers;  // uniform-сэмплеры в теле
         };
         std::vector<HelperInfo> helpers;
         {
@@ -619,14 +622,12 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
             while (std::getline(ls, line)) {
                 const size_t op = line.find('(');
                 if (op == std::string::npos) continue;
-                // Сбалансированный скан до соответствующей ')' ...
                 size_t cl = op;
                 int pdepth = 0;
                 for (size_t i2 = op; i2 < line.size(); ++i2) {
                     if (line[i2] == '(') ++pdepth;
                     if (line[i2] == ')') { --pdepth; if (pdepth == 0) { cl = i2; break; } }
                 }
-                // ... и собираем только ОПРЕДЕЛЕНИЯ: за ')' должен следовать '{'.
                 size_t j = cl + 1;
                 while (j < line.size() && line[j] == ' ') ++j;
                 if (j >= line.size() || line[j] != '{') continue;
@@ -636,7 +637,6 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
             }
         }
 
-        // Тело хелпера: сбалансированный блок от '{' его определения.
         const auto helperBody = [&](const HelperInfo& h) -> std::string {
             const std::string sigHead = h.name + "(";
             size_t hit = preambleCode.find(sigHead);
@@ -663,19 +663,18 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
         };
 
         for (HelperInfo& h : helpers) {
-            const std::string text = helperBody(h);
+            const std::string inner = helperBody(h);
             for (const MSLUniform& u : result.uniforms) {
-                if (u.sampler && containsWord(text, u.name)) h.samplers.push_back(&u);
+                if (u.sampler && containsWord(inner, u.name)) h.samplers.push_back(&u);
             }
         }
-        // Хелпер, вызывающий другой хелпер, наследует его сэмплеры (до фикс-точки).
         bool changed = true;
         while (changed) {
             changed = false;
             for (HelperInfo& h : helpers) {
-                const std::string text = helperBody(h);
+                const std::string inner = helperBody(h);
                 for (const HelperInfo& other : helpers) {
-                    if (other.name == h.name || !containsWord(text, other.name)) continue;
+                    if (other.name == h.name || !containsWord(inner, other.name)) continue;
                     for (const MSLUniform* s : other.samplers) {
                         if (std::find(h.samplers.begin(), h.samplers.end(), s) ==
                             h.samplers.end()) {
@@ -689,9 +688,8 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
 
         const auto paramsTail = [&](const HelperInfo& h) {
             std::string t = ", " + blockParam;
-            for (const MSLUniform* s : h.samplers) {
+            for (const MSLUniform* s : h.samplers)
                 t += std::string(", texture2d<float> ") + s->name + ", sampler " + s->name + "_Sm";
-            }
             return t;
         };
         const auto argsTail = [&](const HelperInfo& h) {
@@ -700,8 +698,7 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
             return t;
         };
 
-        // Сигнатуры: хвостовой uniform-блок, затем используемые сэмплеры. Заодно
-        // GLSL out-параметры превращаются в ссылки MSL (thread T&).
+        // Сигнатуры: GLSL out-параметры превращаются в ссылки MSL (thread T&).
         for (const HelperInfo& h : helpers) {
             const std::string sigHead = h.name + "(";
             const size_t hit = preambleCode.find(sigHead);
@@ -716,17 +713,16 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
             }
             std::string params = preambleCode.substr(begin, i - begin);
             {
-                // "out TYPE name" -> "thread TYPE& name"
-                std::string rewritten;
+                std::string out2;
                 size_t p = 0;
                 while (p < params.size()) {
                     const size_t hitOut = params.find("out ", p);
                     if (hitOut == std::string::npos) {
-                        rewritten += params.substr(p);
+                        out2 += params.substr(p);
                         break;
                     }
                     if (hitOut > 0 && isWordChar(params[hitOut - 1])) {
-                        rewritten += params.substr(p, hitOut - p + 4);
+                        out2 += params.substr(p, hitOut - p + 4);
                         p = hitOut + 4;
                         continue;
                     }
@@ -740,18 +736,17 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
                     size_t nameStop = nameEnd;
                     while (nameStop < params.size() && isWordChar(params[nameStop])) ++nameStop;
                     const std::string paramName = params.substr(nameEnd, nameStop - nameEnd);
-                    rewritten += params.substr(p, hitOut - p);
-                    rewritten += "thread " + typeName + "& " + paramName;
+                    out2 += params.substr(p, hitOut - p);
+                    out2 += "thread " + typeName + "& " + paramName;
                     p = nameStop;
                 }
-                params = rewritten;
+                params = out2;
             }
-            preambleCode = preambleCode.substr(0, begin) + params +
-                           preambleCode.substr(i);
+            preambleCode = preambleCode.substr(0, begin) + params + preambleCode.substr(i);
             preambleCode.insert(begin + params.size(), paramsTail(h));
         }
 
-        // Места вызова в преамбуле (пропуская определения).
+        // Места вызовов в преамбуле (пропуская определения).
         for (const HelperInfo& h : helpers) {
             const std::string callHead = h.name + "(";
             const std::string tail = argsTail(h);

@@ -384,6 +384,15 @@ void DestroyContext() {
 
 bool ContextActive() { return gDevice != nil && gQueue != nil; }
 
+// Применяет накопленный glClear немедленно: открывает и тут же закрывает
+// энкодер - load action прохода заполняет текущую цель. Обязательно перед
+// любым чтением пикселей: иначе отложенный clear так и не попадёт в
+// текстуру, и readback вернёт неопределённое содержимое.
+void FlushPendingClear() {
+    if (!gPendingClearColor && !gPendingClearDepth) return;
+    if (OpenEncoderIfNeeded()) CloseEncoder();
+}
+
 void AttachLayer(void* cametalLayer, uint32_t width, uint32_t height) {
     if (!ContextActive()) CreateContext();
     gLayer = (__bridge CAMetalLayer*)cametalLayer;
@@ -782,10 +791,14 @@ void WriteUniform(GLint location, const void* v, size_t bytes) {
     const size_t offset = (size_t)u.offset;
     if (offset + bytes > po->staging[stage].size()) return;
     memcpy(po->staging[stage].data() + offset, v, bytes);
+    // Одноимённый uniform в другой стадии - тот же объект по семантике GL,
+    // но раскладки блоков стадий РАЗНЫЕ: пишем по смещению чужой записи,
+    // а не по смещению исходной (иначе фрагментный шейдер читает мусор -
+    // так ломались батчи глифов Slug: curveCount приходил нулевым).
     for (const GLUniformInfo& other : po->uniforms) {
         if (other.stage == stage || other.name != u.name || other.bytes != u.bytes) continue;
-        if (offset + bytes <= po->staging[other.stage].size()) {
-            memcpy(po->staging[other.stage].data() + offset, v, bytes);
+        if ((size_t)other.offset + bytes <= po->staging[other.stage].size()) {
+            memcpy(po->staging[other.stage].data() + (size_t)other.offset, v, bytes);
         }
     }
 }
@@ -1159,6 +1172,7 @@ void MGL_glBlitFramebuffer(GLint sx0, GLint sy0, GLint sx1, GLint sy1, GLint dx0
 void MGL_glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type,
                       void* data) {
     (void)format; (void)type;  // движок читает RGBA8
+    FlushPendingClear();
     MGPixelFormat fmt = MGPixelFormat::Invalid;
     GLint w = 0, h = 0;
     id<MTLTexture> tex = DrawTargetTexture(&fmt, &w, &h);
