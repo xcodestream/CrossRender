@@ -152,6 +152,7 @@ MTLPixelFormat ToMetal(MGPixelFormat f) {
         case MGPixelFormat::RGBA16Float: return MTLPixelFormatRGBA16Float;
         case MGPixelFormat::RGBA32Float: return MTLPixelFormatRGBA32Float;
         case MGPixelFormat::Depth32Float: return MTLPixelFormatDepth32Float;
+        case MGPixelFormat::RGB8Unorm: return MTLPixelFormatRGBA8Unorm;  // нет RGB8 в Metal
         case MGPixelFormat::Invalid: break;
     }
     return MTLPixelFormatInvalid;

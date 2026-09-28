@@ -4318,8 +4318,13 @@ bool ProcRender(Font::Impl* impl, u32 codepoint, const FontDesc& desc, RenderedG
         bmp.swap(sdf);
         w = sw;
         h = sh;
-        rg->bearingX -= static_cast<f32>(spread);
-        rg->bearingY += static_cast<f32>(spread);
+        rg->bearingX = -static_cast<f32>(spread);
+        rg->bearingY = static_cast<f32>(h - spread);
+        impl->procOutline = bmp;
+        rg->bitmap = std::move(bmp);
+        rg->width = w;
+        rg->height = h;
+        return true;
     }
     impl->procOutline = bmp;
     rg->bitmap = std::move(bmp);

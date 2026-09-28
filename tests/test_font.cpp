@@ -663,6 +663,12 @@ ENG_TEST(FontProcedural, DefaultSdfFont) {
     ENG_CHECK_NEAR(page.texture.SdfSize(), f->Desc().pixelHeight, 1e-4f);
     ENG_CHECK_GT(g->width, f->Desc().pixelHeight * 0.5f);
     ENG_CHECK_GT(g->height, f->Desc().pixelHeight * 0.5f);
+    // SDF-глифы должны иметь bearingX < 0 (padding слева), потому что
+    // SDF-атлас добавляет spread пикселей со всех сторон.
+    ENG_CHECK_LT(g->bearingX, 0.0f);
+    // bearingY = h_bitmap + spread; glyphs_ height = h_bitmap + 2*spread.
+    // bearingY не должен быть меньше, чем pixelHeight (высота глифа без padding).
+    ENG_CHECK_GT(g->bearingY, f->Desc().pixelHeight * 0.3f);
 }
 
 ENG_TEST(FontProcedural, ProceduralGlyphHasInk) {
