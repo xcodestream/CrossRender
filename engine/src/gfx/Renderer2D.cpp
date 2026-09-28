@@ -621,6 +621,10 @@ void Renderer2D::BeginFrame(int fbWidth, int fbHeight, f32 dpiScale, RenderTarge
     impl_->dpi = dpiScale > 0 ? dpiScale : 1.0f;
     if (fbWidth <= 0) fbWidth = 1;
     if (fbHeight <= 0) fbHeight = 1;
+    // Вьюпорт обязан совпадать с целью кадра явно: по умолчанию он не следует
+    // ни за размером фреймбуфера, ни за его изменениями (на бэкендах без
+    // автоматического вьюпорта кадр растягивался и не пересчитывался при resize).
+    if (gl::glViewport) gl::glViewport(0, 0, fbWidth, fbHeight);
     f32 logicalW = static_cast<f32>(fbWidth) / impl_->dpi;
     f32 logicalH = static_cast<f32>(fbHeight) / impl_->dpi;
     impl_->screen = crossrender::Rect{0, 0, logicalW, logicalH};

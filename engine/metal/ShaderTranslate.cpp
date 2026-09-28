@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cctype>
+#include <cstring>
 #include <cstdlib>
 #include <sstream>
 #include <algorithm>
@@ -80,11 +81,14 @@ std::string NormalizeLegacy(const std::string& glsl, ShaderStage stage) {
 }
 
 // "vec4 name[8]" -> type="vec4", name="name", array=8 (обрабатывает и простой вид).
-bool SplitDeclaration(const std::string& decl, std::string* type, std::string* name, int* array) {
+// arrayToken, если задан, получает сырой содержимое скобок ("8" или "SLUG_MAX_BATCH").
+bool SplitDeclaration(const std::string& decl, std::string* type, std::string* name, int* array,
+                      std::string* arrayToken = nullptr) {
     std::istringstream stream(decl);
     std::string first, second;
     if (!(stream >> first)) return false;
     *array = 0;
+    if (arrayToken) arrayToken->clear();
     if (stream >> second) {
         *type = first;
         // second несёт имя, опционально "name[N]".
@@ -93,7 +97,9 @@ bool SplitDeclaration(const std::string& decl, std::string* type, std::string* n
             *name = second.substr(0, bracket);
             const size_t close = second.find(']', bracket);
             if (close != std::string::npos) {
-                *array = std::atoi(second.substr(bracket + 1, close - bracket - 1).c_str());
+                const std::string raw = second.substr(bracket + 1, close - bracket - 1);
+                if (arrayToken) *arrayToken = raw;
+                *array = std::atoi(raw.c_str());
             }
         } else {
             *name = second;
@@ -101,6 +107,40 @@ bool SplitDeclaration(const std::string& decl, std::string* type, std::string* n
         return !name->empty();
     }
     return false;
+}
+
+// atan(y, x) в GLSL двухаргументный; в MSL это atan2(y, x).
+std::string RewriteAtan2(const std::string& text) {
+    std::string out = text;
+    size_t pos = 0;
+    while (true) {
+        const size_t hit = out.find("atan(", pos);
+        if (hit == std::string::npos) break;
+        if (hit > 0 && (std::isalnum((unsigned char)out[hit - 1]) || out[hit - 1] == '_')) {
+            pos = hit + 5;
+            continue;
+        }
+        size_t i = hit + 5;
+        int depth = 1;
+        bool twoArgs = false;
+        for (; i < out.size(); ++i) {
+            const char c = out[i];
+            if (c == '(') ++depth;
+            if (c == ')') {
+                --depth;
+                if (depth == 0) break;
+            }
+            if (c == ',' && depth == 1) twoArgs = true;
+        }
+        if (i >= out.size()) break;
+        if (twoArgs) {
+            out = out.substr(0, hit) + "atan2(" + out.substr(hit + 5);
+            pos = hit + 6;
+        } else {
+            pos = hit + 5;
+        }
+    }
+    return out;
 }
 
 int BaseUniformSizeBytes(const std::string& glslType) {
@@ -138,10 +178,62 @@ std::string CaptureBlock(const std::string& text, size_t openBrace) {
 struct Declarations {
     std::vector<MSLAttribute> attributes;
     std::vector<std::string> varyingOutNames, varyingOutTypes;    // vertex -> struct
+    std::vector<char> varyingOutFlat;                             // квалификатор flat
     std::vector<std::string> varyingInNames, varyingInTypes;      // fragment <- struct
+    std::vector<char> varyingInFlat;
     std::string fragmentOutputName, fragmentOutputType = "vec4";
     bool hasFragmentOutput = false;
 };
+
+// Отрезает интерполяционный квалификатор ("flat", "smooth", "centroid",
+// "noperspective") с начала объявления varying; flat запоминается - в MSL он
+// становится атрибутом члена структуры [[flat]], а не частью типа.
+bool StripInterpolationQualifier(std::string* decl, bool* flat) {
+    static const char* kQualifiers[] = {"flat ", "smooth ", "centroid ", "noperspective "};
+    for (const char* q : kQualifiers) {
+        const size_t n = std::strlen(q);
+        if (decl->rfind(q, 0) == 0) {
+            *flat = (std::string(q) == "flat ");
+            decl->erase(0, n);
+            return true;
+        }
+    }
+    *flat = false;
+    return false;
+}
+
+// Program-scope const-переменные GLSL в MSL обязаны жить в constant address
+// space; конвертируем объявления верхнего уровня (вне тел функций).
+std::string RewriteProgramScopeConst(const std::string& preamble) {
+    std::string out;
+    out.reserve(preamble.size());
+    int depth = 0;
+    size_t pos = 0;
+    while (pos < preamble.size()) {
+        const size_t eol = preamble.find('\n', pos);
+        const std::string line = preamble.substr(
+            pos, eol == std::string::npos ? std::string::npos : eol - pos + 1);
+        pos = eol == std::string::npos ? preamble.size() : eol + 1;
+        if (depth == 0) {
+            size_t i = 0;
+            while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) ++i;
+            if (line.compare(i, 6, "const ") == 0) {
+                out.append(line, 0, i);
+                out.append("constant ");
+                out.append(line.substr(i + 6));
+            } else {
+                out += line;
+            }
+        } else {
+            out += line;
+        }
+        for (char c : line) {
+            if (c == '{') ++depth;
+            if (c == '}') --depth;
+        }
+    }
+    return out;
+}
 
 }  // namespace
 
@@ -222,6 +314,8 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
     std::string preambleCode;  // вспомогательные функции и т.п.
     std::string mainBody;
     bool inMain = false, mainFound = false;
+    // program-scope "const int NAME = LITERAL;" - для размеров uniform-массивов.
+    std::unordered_map<std::string, int> constInts;
 
     size_t pos = 0;
     while (pos <= src.size()) {
@@ -286,39 +380,56 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
                 }
                 continue;
             }
-            if (startsWith("in ") && stage == ShaderStage::Fragment) {
-                std::string type, name;
-                int array = 0;
-                if (SplitDeclaration(stripSemi(trimmed.substr(3)), &type, &name, &array)) {
-                    decls.varyingInNames.push_back(name);
-                    decls.varyingInTypes.push_back(type);
-                }
-                continue;
-            }
-            if (startsWith("out ")) {
-                std::string type, name;
-                int array = 0;
-                if (SplitDeclaration(stripSemi(trimmed.substr(4)), &type, &name, &array)) {
-                    if (stage == ShaderStage::Vertex) {
-                        decls.varyingOutNames.push_back(name);
-                        decls.varyingOutTypes.push_back(type);
-                    } else if (!decls.hasFragmentOutput) {
-                        decls.hasFragmentOutput = true;
-                        decls.fragmentOutputName = name;
-                        decls.fragmentOutputType = type;
+            // varying-объявления: сначала снимаем квалификатор интерполяции
+            // ("flat in", "smooth out", ...), затем разбираем как обычные in/out.
+            {
+                std::string declLine = trimmed;
+                bool isFlat = false;
+                StripInterpolationQualifier(&declLine, &isFlat);
+                if (declLine.rfind("in ", 0) == 0 && stage == ShaderStage::Fragment) {
+                    std::string type, name;
+                    int array = 0;
+                    if (SplitDeclaration(stripSemi(declLine.substr(3)), &type, &name, &array)) {
+                        decls.varyingInNames.push_back(name);
+                        decls.varyingInTypes.push_back(type);
+                        decls.varyingInFlat.push_back(isFlat ? 1 : 0);
                     }
+                    continue;
                 }
-                continue;
+                if (declLine.rfind("out ", 0) == 0) {
+                    std::string type, name;
+                    int array = 0;
+                    if (SplitDeclaration(stripSemi(declLine.substr(4)), &type, &name, &array)) {
+                        if (stage == ShaderStage::Vertex) {
+                            decls.varyingOutNames.push_back(name);
+                            decls.varyingOutTypes.push_back(type);
+                            decls.varyingOutFlat.push_back(isFlat ? 1 : 0);
+                        } else if (!decls.hasFragmentOutput) {
+                            decls.hasFragmentOutput = true;
+                            decls.fragmentOutputName = name;
+                            decls.fragmentOutputType = type;
+                        }
+                    }
+                    continue;
+                }
             }
             if (startsWith("uniform ")) {
                 std::string rest = stripSemi(trimmed.substr(8));
-                std::string type, name;
+                std::string type, name, arrayToken;
                 int array = 0;
-                if (SplitDeclaration(rest, &type, &name, &array)) {
+                if (SplitDeclaration(rest, &type, &name, &array, &arrayToken)) {
                     MSLUniform u;
                     u.name = name;
                     u.glslType = type;
                     u.sampler = type.rfind("sampler", 0) == 0;
+                    // Размер массива может быть задан program-scope const int
+                    // ("uniform vec4 uGlyphA[SLUG_MAX_BATCH]"); резолвим его.
+                    if (array == 0 && !arrayToken.empty() &&
+                        (arrayToken.empty() ||
+                         arrayToken.find_first_not_of("0123456789") != std::string::npos)) {
+                        const auto known = constInts.find(arrayToken);
+                        if (known != constInts.end()) array = known->second;
+                    }
                     u.arraySize = array;
                     u.bytes = u.sampler ? 0 : GLSLUniformSizeBytes(type, array);
                     result.uniforms.push_back(u);
@@ -346,6 +457,26 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
                 }
                 pos = i + 1;
                 continue;
+            }
+            // Program-scope целые константы запоминаем: ими могут объявляться
+            // размеры uniform-массивов.
+            if (startsWith("const int ") || startsWith("const uint ") ||
+                startsWith("const short ")) {
+                const size_t eq = trimmed.find('=');
+                const size_t semi = trimmed.find(';', eq);
+                if (eq != std::string::npos && semi != std::string::npos) {
+                    std::string lhs = trimmed.substr(trimmed.find(' ') + 1, eq - trimmed.find(' ') - 1);
+                    // последний идентификатор слева от '=' - имя
+                    const size_t nameEnd = lhs.find_last_not_of(" \t");
+                    if (nameEnd != std::string::npos) {
+                        lhs = lhs.substr(0, nameEnd + 1);
+                        const size_t nameStart = lhs.find_last_of(" \t");
+                        const std::string constName =
+                            nameStart == std::string::npos ? lhs : lhs.substr(nameStart + 1);
+                        const std::string valueText = trimmed.substr(eq + 1, semi - eq - 1);
+                        constInts[constName] = std::atoi(valueText.c_str());
+                    }
+                }
             }
             // Код хелперов: сохраняем, перезаписи типов/встроенных применяются позже.
             preambleCode += line + "\n";
@@ -381,11 +512,28 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
 
     // ---- перезаписи тела ----------------------------------------------------
     std::string body = mainBody;
+
+    // GLSL разрешает mat3(mat4) - верхний левый минор 3x3; в MSL конструктора
+    // матрицы из матрицы нет, раскрываем в явные колонки (для uniform-матриц).
+    for (const MSLUniform& u : result.uniforms) {
+        if (u.glslType != "mat4") continue;
+        const std::string from = "mat3(" + u.name + ")";
+        const std::string to = "mat3(" + u.name + "[0].xyz, " + u.name + "[1].xyz, " +
+                               u.name + "[2].xyz)";
+        size_t hit;
+        while ((hit = body.find(from)) != std::string::npos) body.replace(hit, from.size(), to);
+        while ((hit = preambleCode.find(from)) != std::string::npos)
+            preambleCode.replace(hit, from.size(), to);
+    }
+
     body = RewriteTypes(body);
     body = RewriteBuiltins(body);
+    body = RewriteAtan2(body);
     preambleCode = RewriteTypes(preambleCode);
     preambleCode = RewriteBuiltins(preambleCode);
+    preambleCode = RewriteAtan2(preambleCode);
     preambleCode = RewriteTexelFetch(preambleCode);
+    preambleCode = RewriteProgramScopeConst(preambleCode);
 
     // texture(sampler, ...) -> sampler.sample(sampler_Sm, ...)
     for (const MSLUniform& u : result.uniforms) {
@@ -404,6 +552,11 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
     const bool usesFragCoord = stage == ShaderStage::Fragment &&
                                ReplaceWord(body, "gl_FragCoord", "") != body;
     if (usesFragCoord) body = ReplaceWord(body, "gl_FragCoord", "_fragCoord");
+
+    // gl_InstanceID (int в GLSL) -> параметр [[instance_id]] (uint в Metal).
+    const bool usesInstanceId = stage == ShaderStage::Vertex &&
+                                ReplaceWord(body, "gl_InstanceID", "") != body;
+    if (usesInstanceId) body = ReplaceWord(body, "gl_InstanceID", "(int)_instanceId");
 
     if (stage == ShaderStage::Fragment) {
         // Голый ранний return всё равно должен вернуть выходной цвет.
@@ -439,11 +592,27 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
     // ---- проход хелперов ------------------------------------------------------
     const char* blockName = stage == ShaderStage::Vertex ? "UniformsVS" : "UniformsFS";
     const std::string blockParam = std::string("constant ") + blockName + "& _u";
-    // Хелперы (функции преамбулы), ссылающиеся на `_u.`, получают uniform-блок
-    // как хвостовой параметр; их места вызова (в main и в других хелперах)
-    // добавляют `, _u`. Итерируем несколько раз, чтобы покрыть вызовы хелпер-из-хелпера.
     {
-        std::vector<std::string> helperNames;
+        const auto isWordChar = [](char c) {
+            return std::isalnum((unsigned char)c) || c == '_';
+        };
+        const auto containsWord = [&](const std::string& text, const std::string& word) {
+            size_t hit = text.find(word);
+            while (hit != std::string::npos) {
+                const bool leftOk = hit == 0 || !isWordChar(text[hit - 1]);
+                const size_t right = hit + word.size();
+                const bool rightOk = right >= text.size() || !isWordChar(text[right]);
+                if (leftOk && rightOk) return true;
+                hit = text.find(word, right);
+            }
+            return false;
+        };
+
+        struct HelperInfo {
+            std::string name;
+            std::vector<const MSLUniform*> samplers;  // sampler-юниформы в теле
+        };
+        std::vector<HelperInfo> helpers;
         {
             std::istringstream ls(preambleCode);
             std::string line;
@@ -462,31 +631,138 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
                 while (j < line.size() && line[j] == ' ') ++j;
                 if (j >= line.size() || line[j] != '{') continue;
                 size_t start = op;
-                while (start > 0 && (std::isalnum((unsigned char)line[start - 1]) || line[start - 1] == '_')) --start;
-                if (op > start) helperNames.push_back(line.substr(start, op - start));
+                while (start > 0 && isWordChar(line[start - 1])) --start;
+                if (op > start) helpers.push_back({line.substr(start, op - start), {}});
             }
         }
-        // определения: добавляем параметр-блок
-        for (const std::string& n : helperNames) {
-            const std::string sigHead = n + "(";
+
+        // Тело хелпера: сбалансированный блок от '{' его определения.
+        const auto helperBody = [&](const HelperInfo& h) -> std::string {
+            const std::string sigHead = h.name + "(";
+            size_t hit = preambleCode.find(sigHead);
+            while (hit != std::string::npos) {
+                if (hit > 0 && isWordChar(preambleCode[hit - 1])) {
+                    hit = preambleCode.find(sigHead, hit + sigHead.size());
+                    continue;
+                }
+                size_t i = hit + sigHead.size();
+                int pd = 1;
+                while (i < preambleCode.size() && pd > 0) {
+                    if (preambleCode[i] == '(') ++pd;
+                    if (preambleCode[i] == ')') --pd;
+                    if (pd > 0) ++i;
+                }
+                size_t j = i + 1;
+                while (j < preambleCode.size() && (preambleCode[j] == ' ' || preambleCode[j] == '\n')) ++j;
+                if (j < preambleCode.size() && preambleCode[j] == '{') {
+                    return CaptureBlock(preambleCode, j);
+                }
+                hit = preambleCode.find(sigHead, i + 1);
+            }
+            return {};
+        };
+
+        for (HelperInfo& h : helpers) {
+            const std::string text = helperBody(h);
+            for (const MSLUniform& u : result.uniforms) {
+                if (u.sampler && containsWord(text, u.name)) h.samplers.push_back(&u);
+            }
+        }
+        // Хелпер, вызывающий другой хелпер, наследует его сэмплеры (до фикс-точки).
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            for (HelperInfo& h : helpers) {
+                const std::string text = helperBody(h);
+                for (const HelperInfo& other : helpers) {
+                    if (other.name == h.name || !containsWord(text, other.name)) continue;
+                    for (const MSLUniform* s : other.samplers) {
+                        if (std::find(h.samplers.begin(), h.samplers.end(), s) ==
+                            h.samplers.end()) {
+                            h.samplers.push_back(s);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        const auto paramsTail = [&](const HelperInfo& h) {
+            std::string t = ", " + blockParam;
+            for (const MSLUniform* s : h.samplers) {
+                t += std::string(", texture2d<float> ") + s->name + ", sampler " + s->name + "_Sm";
+            }
+            return t;
+        };
+        const auto argsTail = [&](const HelperInfo& h) {
+            std::string t = ", _u";
+            for (const MSLUniform* s : h.samplers) t += std::string(", ") + s->name + ", " + s->name + "_Sm";
+            return t;
+        };
+
+        // Сигнатуры: хвостовой uniform-блок, затем используемые сэмплеры. Заодно
+        // GLSL out-параметры превращаются в ссылки MSL (thread T&).
+        for (const HelperInfo& h : helpers) {
+            const std::string sigHead = h.name + "(";
             const size_t hit = preambleCode.find(sigHead);
             if (hit == std::string::npos) continue;
             size_t i = hit + sigHead.size();
             int depth = 1;
+            size_t begin = i;
             while (i < preambleCode.size() && depth > 0) {
                 if (preambleCode[i] == '(') ++depth;
                 if (preambleCode[i] == ')') --depth;
                 if (depth > 0) ++i;
             }
-            preambleCode.insert(i, ", " + blockParam);
+            std::string params = preambleCode.substr(begin, i - begin);
+            {
+                // "out TYPE name" -> "thread TYPE& name"
+                std::string rewritten;
+                size_t p = 0;
+                while (p < params.size()) {
+                    const size_t hitOut = params.find("out ", p);
+                    if (hitOut == std::string::npos) {
+                        rewritten += params.substr(p);
+                        break;
+                    }
+                    if (hitOut > 0 && isWordChar(params[hitOut - 1])) {
+                        rewritten += params.substr(p, hitOut - p + 4);
+                        p = hitOut + 4;
+                        continue;
+                    }
+                    size_t after = hitOut + 4;
+                    while (after < params.size() && params[after] == ' ') ++after;
+                    size_t nameStart = after;
+                    while (nameStart < params.size() && isWordChar(params[nameStart])) ++nameStart;
+                    const std::string typeName = params.substr(after, nameStart - after);
+                    size_t nameEnd = nameStart;
+                    while (nameEnd < params.size() && params[nameEnd] == ' ') ++nameEnd;
+                    size_t nameStop = nameEnd;
+                    while (nameStop < params.size() && isWordChar(params[nameStop])) ++nameStop;
+                    const std::string paramName = params.substr(nameEnd, nameStop - nameEnd);
+                    rewritten += params.substr(p, hitOut - p);
+                    rewritten += "thread " + typeName + "& " + paramName;
+                    p = nameStop;
+                }
+                params = rewritten;
+            }
+            preambleCode = preambleCode.substr(0, begin) + params +
+                           preambleCode.substr(i);
+            preambleCode.insert(begin + params.size(), paramsTail(h));
         }
-        // места вызова: пропускаем определения (за которыми следует '{')
-        for (const std::string& n : helperNames) {
-            const std::string callHead = n + "(";
+
+        // Места вызова в преамбуле (пропуская определения).
+        for (const HelperInfo& h : helpers) {
+            const std::string callHead = h.name + "(";
+            const std::string tail = argsTail(h);
             size_t pos2 = 0;
             while (true) {
-                const size_t hit = preambleCode.find(callHead, pos2);
+                size_t hit = preambleCode.find(callHead, pos2);
                 if (hit == std::string::npos) break;
+                if (hit > 0 && isWordChar(preambleCode[hit - 1])) {
+                    pos2 = hit + callHead.size();
+                    continue;
+                }
                 size_t i = hit + callHead.size();
                 int depth = 1;
                 while (i < preambleCode.size() && depth > 0) {
@@ -500,17 +776,22 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
                     pos2 = i + 1;  // определение, пропускаем
                     continue;
                 }
-                preambleCode.insert(i, ", _u");
-                pos2 = i + 5;
+                preambleCode.insert(i, tail);
+                pos2 = i + tail.size();
             }
         }
-        // та же перезапись мест вызова внутри main
-        for (const std::string& n : helperNames) {
-            const std::string callHead = n + "(";
+        // Те же вызовы внутри main.
+        for (const HelperInfo& h : helpers) {
+            const std::string callHead = h.name + "(";
+            const std::string tail = argsTail(h);
             size_t pos2 = 0;
             while (true) {
-                const size_t hit = body.find(callHead, pos2);
+                size_t hit = body.find(callHead, pos2);
                 if (hit == std::string::npos) break;
+                if (hit > 0 && isWordChar(body[hit - 1])) {
+                    pos2 = hit + callHead.size();
+                    continue;
+                }
                 size_t i = hit + callHead.size();
                 int depth = 1;
                 while (i < body.size() && depth > 0) {
@@ -518,12 +799,11 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
                     if (body[i] == ')') --depth;
                     if (depth > 0) ++i;
                 }
-                body.insert(i, ", _u");
-                pos2 = i + 5;
+                body.insert(i, tail);
+                pos2 = i + tail.size();
             }
         }
     }
-
 
     // ---- генерация ---------------------------------------------------------
     std::ostringstream msl;
@@ -531,7 +811,8 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
         << "#include <metal_stdlib>\nusing namespace metal;\n\n";
 
     const auto emitStruct = [&](const char* name, bool position, const std::vector<std::string>& names,
-                                const std::vector<std::string>& types, bool attributes) {
+                                const std::vector<std::string>& types, bool attributes,
+                                const std::vector<char>* flatFlags = nullptr) {
         msl << "struct " << name << " {\n";
         if (position) msl << "    float4 position [[position]];\n";
         for (size_t i = 0; i < names.size(); ++i) {
@@ -543,6 +824,7 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
             }
             msl << "    " << RewriteTypes(types[i]) << " " << names[i];
             if (attributes) msl << " [[attribute(" << location << ")]]";
+            else if (flatFlags && i < flatFlags->size() && (*flatFlags)[i]) msl << " [[flat]]";
             msl << ";\n";
         }
         msl << "};\n\n";
@@ -560,9 +842,11 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
         emitStruct(inStructName, false, names, types, true);
     }
     if (stage == ShaderStage::Vertex) {
-        emitStruct(outStructName, true, decls.varyingOutNames, decls.varyingOutTypes, false);
+        emitStruct(outStructName, true, decls.varyingOutNames, decls.varyingOutTypes, false,
+                   &decls.varyingOutFlat);
     } else {
-        emitStruct(inStructName, false, decls.varyingInNames, decls.varyingInTypes, false);
+        emitStruct(inStructName, false, decls.varyingInNames, decls.varyingInTypes, false,
+                   &decls.varyingInFlat);
     }
 
     // Структура упакованного uniform-блока (не-сэмплерные uniform-ы, смещения в духе std140).
@@ -596,6 +880,10 @@ MSLTranslation TranslateGLSLToMSL(const std::string& glsl, ShaderStage stage) {
     if (usesFragCoord) {
         if (args.str().size()) args << ", ";
         args << "float4 _fragCoord [[position]]";
+    }
+    if (usesInstanceId) {
+        if (args.str().size()) args << ", ";
+        args << "uint _instanceId [[instance_id]]";
     }
     if (hasBlock) {
         if (args.str().size()) args << ", ";

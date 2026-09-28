@@ -116,7 +116,7 @@ GLuint gNextBuffer = 1, gNextTexture = 1, gNextShader = 1, gNextProgram = 1, gNe
 
 GLuint gArrayBuffer = 0, gElementBuffer = 0;
 GLuint gCurrentProgram = 0, gCurrentVAO = 0, gDrawFBO = 0, gReadFBO = 0;
-GLint gViewport[4] = {0, 0, 1280, 720};
+GLint gViewport[4] = {0, 0, 0, 0};  // 0 = вывести из размера drawable при отрисовке
 GLint gScissor[4] = {0, 0, 0, 0};
 GLfloat gClearColor[4] = {0, 0, 0, 0};
 bool gBlendEnabled = false, gDepthTestEnabled = false, gScissorEnabled = false,
@@ -395,6 +395,10 @@ void AttachLayer(void* cametalLayer, uint32_t width, uint32_t height) {
 
 void SurfaceResized(uint32_t width, uint32_t height) {
     if (gLayer != nil) gLayer.drawableSize = CGSizeMake(width, height);
+    // Хранимый вьюпорт больше не соответствует поверхности; сброс заставляет
+    // SetupDraw вывести его из нового размера drawable.
+    gViewport[2] = 0;
+    gViewport[3] = 0;
     CloseEncoder();
 }
 
@@ -764,60 +768,82 @@ uint8_t* UniformSlot(GLint location) {
     return po->staging[stage].data() + offset;
 }
 
+// GL: одноимённый uniform, объявленный в обеих стадиях, - единый объект; запись
+// через локацию одной стадии обязана обновить обе. Без зеркала фрагментная
+// копия остаётся нулевой (так ломался батч глифов в Slug).
+void WriteUniform(GLint location, const void* v, size_t bytes) {
+    auto po = CurrentProgram();
+    if (!po || location <= 0 || !(location & 1)) return;
+    const size_t index = (size_t)((location >> 1) & 0xFFFF);
+    const int stage = (location >> 24) & 1;
+    if (index >= po->uniforms.size()) return;
+    const GLUniformInfo& u = po->uniforms[index];
+    if (u.sampler || u.bytes == 0 || bytes > (size_t)u.bytes) return;
+    const size_t offset = (size_t)u.offset;
+    if (offset + bytes > po->staging[stage].size()) return;
+    memcpy(po->staging[stage].data() + offset, v, bytes);
+    for (const GLUniformInfo& other : po->uniforms) {
+        if (other.stage == stage || other.name != u.name || other.bytes != u.bytes) continue;
+        if (offset + bytes <= po->staging[other.stage].size()) {
+            memcpy(po->staging[other.stage].data() + offset, v, bytes);
+        }
+    }
+}
+
 void MGL_glUniform1i(GLint location, GLint v) {
     GLUniformInfo* info = nullptr;
     if (DecodeUniform(location, &info) && info->sampler) {
         gSamplerUnit[info->binding] = v;
         return;
     }
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, &v, sizeof(v));
+    WriteUniform(location, &v, sizeof(v));
 }
 void MGL_glUniform1f(GLint location, GLfloat v) {
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, &v, sizeof(v));
+    WriteUniform(location, &v, sizeof(v));
 }
 void MGL_glUniform2f(GLint location, GLfloat x, GLfloat y) {
     const GLfloat v[2] = {x, y};
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, v, sizeof(v));
+    WriteUniform(location, v, sizeof(v));
 }
 void MGL_glUniform3f(GLint location, GLfloat x, GLfloat y, GLfloat z) {
     const GLfloat v[3] = {x, y, z};
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, v, sizeof(v));
+    WriteUniform(location, v, sizeof(v));
 }
 void MGL_glUniform4f(GLint location, GLfloat x, GLfloat y, GLfloat z, GLfloat w) {
     const GLfloat v[4] = {x, y, z, w};
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, v, sizeof(v));
+    WriteUniform(location, v, sizeof(v));
 }
 void MGL_glUniform1fv(GLint location, GLsizei count, const GLfloat* v) {
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, v, sizeof(GLfloat) * count);
+    WriteUniform(location, v, sizeof(GLfloat) * count);
 }
 void MGL_glUniform2fv(GLint location, GLsizei count, const GLfloat* v) {
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, v, sizeof(GLfloat) * 2 * count);
+    WriteUniform(location, v, sizeof(GLfloat) * 2 * count);
 }
 void MGL_glUniform3fv(GLint location, GLsizei count, const GLfloat* v) {
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, v, sizeof(GLfloat) * 3 * count);
+    WriteUniform(location, v, sizeof(GLfloat) * 3 * count);
 }
 void MGL_glUniform4fv(GLint location, GLsizei count, const GLfloat* v) {
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, v, sizeof(GLfloat) * 4 * count);
+    WriteUniform(location, v, sizeof(GLfloat) * 4 * count);
 }
 void MGL_glUniform2iv(GLint location, GLsizei count, const GLint* v) {
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, v, sizeof(GLint) * 2 * count);
+    WriteUniform(location, v, sizeof(GLint) * 2 * count);
 }
 void MGL_glUniform3iv(GLint location, GLsizei count, const GLint* v) {
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, v, sizeof(GLint) * 3 * count);
+    WriteUniform(location, v, sizeof(GLint) * 3 * count);
 }
 void MGL_glUniform4iv(GLint location, GLsizei count, const GLint* v) {
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, v, sizeof(GLint) * 4 * count);
+    WriteUniform(location, v, sizeof(GLint) * 4 * count);
 }
 void MGL_glUniform1uiv(GLint location, GLsizei count, const GLuint* v) {
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, v, sizeof(GLuint) * count);
+    WriteUniform(location, v, sizeof(GLuint) * count);
 }
 void MGL_glUniformMatrix2fv(GLint location, GLsizei count, GLboolean t, const GLfloat* v) {
     (void)t;
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, v, sizeof(GLfloat) * 4 * count);
+    WriteUniform(location, v, sizeof(GLfloat) * 4 * count);
 }
 void MGL_glUniformMatrix3fv(GLint location, GLsizei count, GLboolean t, const GLfloat* v) {
     (void)t;
-    if (uint8_t* p = UniformSlot(location)) memcpy(p, v, sizeof(GLfloat) * 9 * count);
+    WriteUniform(location, v, sizeof(GLfloat) * 9 * count);
 }
 void MGL_glUniformMatrix4fv(GLint location, GLsizei count, GLboolean t, const GLfloat* v) {
     (void)t;  // движок передаёт GL_FALSE; float4x4 в MSL тоже column-major
@@ -952,8 +978,14 @@ bool SetupDraw(id<MTLRenderPipelineState>* outPso) {
     if (pso == nil) return false;
     [gEncoder setRenderPipelineState:pso];
     [gEncoder setDepthStencilState:BuildDepthStencil()];
-    [gEncoder setViewport:(MTLViewport){(double)gViewport[0], (double)gViewport[1],
-                                        (double)gViewport[2], (double)gViewport[3], 0.0, 1.0}];
+    // Вьюпорт по умолчанию - вся поверхность: движок может и не вызывать
+    // glViewport (2D-путь никогда не делал этого явно).
+    MTLViewport metalViewport = {0.0, 0.0, (double)target.width, (double)target.height, 0.0, 1.0};
+    if (gViewport[2] > 0 && gViewport[3] > 0) {
+        metalViewport = (MTLViewport){(double)gViewport[0], (double)gViewport[1],
+                                      (double)gViewport[2], (double)gViewport[3], 0.0, 1.0};
+    }
+    [gEncoder setViewport:metalViewport];
     if (gScissorEnabled && gScissor[2] > 0 && gScissor[3] > 0) {
         [gEncoder setScissorRect:(MTLScissorRect){(NSUInteger)gScissor[0], (NSUInteger)gScissor[1],
                                                   (NSUInteger)gScissor[2], (NSUInteger)gScissor[3]}];
@@ -1038,20 +1070,31 @@ void MGL_glDrawElements(GLenum mode, GLsizei count, GLenum type, const void* ind
 }
 
 void MGL_glDrawArraysInstanced(GLenum mode, GLint first, GLsizei count, GLsizei instances) {
-    if (instances > 1) {
-        NotImplemented("glDrawArraysInstanced (instances > 1)");
-        return;
-    }
-    MGL_glDrawArrays(mode, first, count);
+    if (instances <= 0) return;
+    id<MTLRenderPipelineState> pso = nil;
+    const bool setupOk = SetupDraw(&pso);
+    if (!setupOk) return;
+    [gEncoder drawPrimitives:ToMetal(GLPrimitiveToMTL(mode))
+                 vertexStart:(NSUInteger)first
+                 vertexCount:(NSUInteger)count
+               instanceCount:(NSUInteger)instances];
 }
 
 void MGL_glDrawElementsInstanced(GLenum mode, GLsizei count, GLenum type, const void* indices,
                                  GLsizei instances) {
-    if (instances > 1) {
-        NotImplemented("glDrawElementsInstanced (instances > 1)");
-        return;
-    }
-    MGL_glDrawElements(mode, count, type, indices);
+    if (instances <= 0) return;
+    id<MTLRenderPipelineState> pso = nil;
+    if (!SetupDraw(&pso)) return;
+    auto vao = CurrentVAO();
+    const GLuint ib = vao->indexBuffer ? vao->indexBuffer : gElementBuffer;
+    auto it = gBuffers.find(ib);
+    if (it == gBuffers.end() || it->second.buffer == nil) return;
+    [gEncoder drawIndexedPrimitives:ToMetal(GLPrimitiveToMTL(mode))
+                         indexCount:(NSUInteger)count
+                          indexType:ToMetal(GLIndexTypeToMTL(type))
+                        indexBuffer:it->second.buffer
+                  indexBufferOffset:(NSUInteger)(uintptr_t)indices
+                      instanceCount:(NSUInteger)instances];
 }
 
 void MGL_glGenFramebuffers(GLsizei n, GLuint* ids) {

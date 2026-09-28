@@ -392,7 +392,9 @@ void main() {
     float sdf = dist - uDilation;
     float soft = max(uSoftness, 0.25) * uAaWidth;
     float fillCov = clamp(0.5 + sdf / soft, 0.0, 1.0);
-    if (fillCov <= 0.0) discard;
+    // Внешняя область контура лежит там, где fillCov == 0: отбрасывать её можно
+    // только при выключенном контуре, иначе кольцо обводки срезается до каймы.
+    if (fillCov <= 0.0 && uOutlineWidth <= 0.0) discard;
 
     vec4 base = uColor;
     if (uUseGradient != 0) {

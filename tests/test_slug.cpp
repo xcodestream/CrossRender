@@ -178,7 +178,14 @@ Font* LoadEngineFont() {
     if (!tried) {
         tried = true;
         static Font font;
-        if (font.LoadFromFile("assets/fonts/engine.ttf", FontDesc{})) cached = &font;
+        // engine.ttf остался от удалённого генератора ассетов; откатываемся
+        // на любой staged-шрифт, чтобы GPU-тесты Slug выполнялись.
+        for (const char* name : {"assets/fonts/engine.ttf", "assets/fonts/ubuntu.ttf"}) {
+            if (font.LoadFromFile(name, FontDesc{})) {
+                cached = &font;
+                break;
+            }
+        }
     }
     return cached;
 }

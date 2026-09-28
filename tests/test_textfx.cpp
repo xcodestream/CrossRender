@@ -24,13 +24,17 @@ struct TextFixture {
     bool loaded = false;
 
     bool Init(int px = 48) {
-        const std::string path = PathJoin(GetAssetRoot(), "fonts/engine.ttf");
         FontDesc desc;
         desc.pixelHeight = static_cast<f32>(px);
         desc.hinting = true;
-        if (FileExists(path) && font.LoadFromFile(path, desc)) {
-            loaded = true;
-            return true;
+        // engine.ttf собирался удалённым генератором ассетов; пробуем его,
+        // затем любой staged-шрифт примера.
+        for (const char* name : {"fonts/engine.ttf", "fonts/ubuntu.ttf"}) {
+            const std::string path = PathJoin(GetAssetRoot(), name);
+            if (FileExists(path) && font.LoadFromFile(path, desc)) {
+                loaded = true;
+                return true;
+            }
         }
         return false;
     }

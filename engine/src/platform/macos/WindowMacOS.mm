@@ -439,6 +439,10 @@ bool Window::Create(const WindowDesc& desc) {
         [view setWantsLayer:YES];
         CAMetalLayer* metalLayer = [CAMetalLayer layer];
         metalLayer.frame = [view bounds];
+        // Drawable создаётся в backing-пикселях; без явного contentsScale слой
+        // рисует один texel на точку (дефолт 1.0), и контент растягивается
+        // во столько же раз, во сколько backingScaleFactor отличается от 1.
+        metalLayer.contentsScale = [impl_->window backingScaleFactor];
         [view setLayer:metalLayer];
         [impl_->window setContentView:view];
         impl_->view = view;
@@ -536,6 +540,15 @@ bool Window::Create(const WindowDesc& desc) {
         impl_->width = static_cast<int>([impl_->view bounds].size.width);
         impl_->height = static_cast<int>([impl_->view bounds].size.height);
         impl_->dpiScale = static_cast<f32>([impl_->window backingScaleFactor]);
+
+#if defined(ENG_METAL)
+        // AttachLayer вызывается до того, как окно разложит view: drawable
+        // получает размер ещё не выложенного view. После layout синхронизируем
+        // drawable с фактическим фреймбуфером, иначе холст остаётся малого
+        // стартового размера, а контент растягивается при выводе.
+        crossrender::mtlgl::SurfaceResized(static_cast<uint32_t>(impl_->fbWidth),
+                                           static_cast<uint32_t>(impl_->fbHeight));
+#endif
 
         ENG_LOGI("platform", "window created %dx%d (fb %dx%d, dpi %.2f)", impl_->width,
                  impl_->height, impl_->fbWidth, impl_->fbHeight, impl_->dpiScale);
@@ -862,6 +875,12 @@ bool CreateHeadlessGLContext() {
     }
     CGLSetCurrentContext(g_headlessContext);
     g_headlessRefCount = 1;
+#if defined(ENG_METAL)
+    // При CR_METAL=ON все gl:: точки входа уходят в слой поверх Metal, поэтому
+    // headless-контексту нужно то же устройство, что и окну, - иначе шейдеры и
+    // отрисовка молча превращаются в no-op (в тестах и headless-скриншотах).
+    if (!mtlgl::ContextActive()) mtlgl::CreateContext();
+#endif
     ENG_LOGI("platform", "headless OpenGL 3.2 core context created");
     return true;
 }

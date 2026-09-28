@@ -17,6 +17,10 @@ MGPixelFormat GLFormatToMTL(uint32_t internalFormat, uint32_t format, uint32_t t
         case gl::GL_RGBA16F: return MGPixelFormat::RGBA16Float;
         case gl::GL_RGBA32F: return MGPixelFormat::RGBA32Float;
         case gl::GL_DEPTH_COMPONENT32F: return MGPixelFormat::Depth32Float;
+        // Metal не поддерживает Depth24Stencil8 на Apple Silicon; глубина 32F
+        // совместима по чтению, трафарет при этом отбрасывается.
+        case gl::GL_DEPTH24_STENCIL8: return MGPixelFormat::Depth32Float;
+        case gl::GL_DEPTH_COMPONENT24: return MGPixelFormat::Depth32Float;
         default: break;
     }
     // Безразмерные internal-форматы: классификация по (format, type).

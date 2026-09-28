@@ -563,12 +563,16 @@ ENG_TEST(Renderer2D, TextRendersInk) {
     // Загружаем шрифт *после* появления GL-контекста, чтобы его атлас получил
     // настоящую текстуру; при отсутствии файла шрифта откатываемся к процедурному.
     Font loaded;
-    const std::string path = PathJoin(GetAssetRoot(), "fonts/engine.ttf");
     Font* font = nullptr;
-    if (FileExists(path)) {
+    for (const char* name : {"fonts/engine.ttf", "fonts/ubuntu.ttf"}) {
+        const std::string path = PathJoin(GetAssetRoot(), name);
+        if (!FileExists(path)) continue;
         FontDesc desc;
         desc.pixelHeight = 36.0f;
-        if (loaded.LoadFromFile(path, desc)) font = &loaded;
+        if (loaded.LoadFromFile(path, desc)) {
+            font = &loaded;
+            break;
+        }
     }
     if (!font) {
         font = FontManager::Get().DefaultFont();
