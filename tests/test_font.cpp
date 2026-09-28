@@ -661,6 +661,8 @@ ENG_TEST(FontProcedural, DefaultSdfFont) {
     ENG_CHECK(page.size > 0);
     ENG_CHECK_NEAR(page.texture.SdfSpread(), f->Desc().sdfSpread, 1e-4f);
     ENG_CHECK_NEAR(page.texture.SdfSize(), f->Desc().pixelHeight, 1e-4f);
+    ENG_CHECK_GT(g->width, f->Desc().pixelHeight * 0.5f);
+    ENG_CHECK_GT(g->height, f->Desc().pixelHeight * 0.5f);
 }
 
 ENG_TEST(FontProcedural, ProceduralGlyphHasInk) {
@@ -834,6 +836,18 @@ ENG_TEST(FontTtf, SdfMatchesBitmapMetrics) {
     ENG_CHECK_NEAR(sg->bearingY - sd.sdfSpread, bg->bearingY, 1.0f);
     ENG_CHECK_NEAR(sg->width, bg->width + 2.0f * sd.sdfSpread, 3.0f);
     ENG_CHECK_NEAR(sg->height, bg->height + 2.0f * sd.sdfSpread, 3.0f);
+
+    // The nominal page size must not silently rescale the SDF bitmap.
+    FontDesc tinyPage = sd;
+    tinyPage.atlasSize = 16;
+    Font largeSdf;
+    ENG_CHECK(largeSdf.LoadFromMemory(ttf.data(), ttf.size(), tinyPage));
+    const Glyph* large = largeSdf.GetGlyph('A');
+    ENG_CHECK(large != nullptr);
+    if (large) {
+        ENG_CHECK_NEAR(large->width, sg->width, 1e-4f);
+        ENG_CHECK_NEAR(large->height, sg->height, 1e-4f);
+    }
 
     // Значения SDF: 128 на границе, мало глубоко внутри, много далеко снаружи.
     std::vector<u8> sdf;

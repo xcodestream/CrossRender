@@ -283,6 +283,16 @@ ENG_TEST(Json, ParseErrorsAndEdgeCases) {
     ENG_CHECK_EQ(e["a"].Size(), 0u);
     ENG_CHECK(e["b"].IsObject());
     ENG_CHECK_EQ(e["b"].Size(), 0u);
+
+    for (const char* invalid : {"+1", "1.", "1e", "1e+", "01", "\"\\uD800\\u0000\""}) {
+        err.clear();
+        JsonValue::Parse(invalid, &err);
+        ENG_CHECK_MSG(!err.empty(), invalid);
+    }
+    err.clear();
+    JsonValue pair = JsonValue::Parse("\"\\uD834\\uDD1E\"", &err);
+    ENG_CHECK(err.empty());
+    ENG_CHECK_EQ(pair.AsString().size(), usize{4});
 }
 
 ENG_TEST(Json, DumpRoundTrip) {

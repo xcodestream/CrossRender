@@ -295,6 +295,7 @@ struct Renderer2D::Impl {
     std::vector<R2DVertex> vertices;
     std::vector<u32> indices;
     std::vector<DrawCall> calls;
+    bool vertexOverflow = false;
 
     std::vector<State> stack;
     State state;
@@ -348,12 +349,17 @@ struct Renderer2D::Impl {
         indices.reserve(indices.size() + indexCount);
     }
 
-    void PushVertex(const Vec2& pos, const Vec2& uv, const Color& c) {
-        if (vertices.size() >= kMaxVertices) return;
+    bool PushVertex(const Vec2& pos, const Vec2& uv, const Color& c) {
+        if (vertices.size() >= kMaxVertices) {
+            vertexOverflow = true;
+            return false;
+        }
         vertices.push_back({pos, uv, c});
+        return true;
     }
 
     void PushTriangle(u32 a, u32 b, u32 c) {
+        if (vertexOverflow || a >= vertices.size() || b >= vertices.size() || c >= vertices.size()) return;
         indices.push_back(a);
         indices.push_back(b);
         indices.push_back(c);
@@ -624,6 +630,7 @@ void Renderer2D::BeginFrame(int fbWidth, int fbHeight, f32 dpiScale, RenderTarge
 
     impl_->vertices.clear();
     impl_->indices.clear();
+    impl_->vertexOverflow = false;
     impl_->calls.clear();
     impl_->scissors.clear();
     impl_->state = State{};
@@ -666,6 +673,7 @@ void Renderer2D::Flush() {
     if (impl_->vertices.empty() || impl_->indices.empty() || !impl_->ready) {
         impl_->vertices.clear();
         impl_->indices.clear();
+        impl_->vertexOverflow = false;
         impl_->calls.clear();
         return;
     }
@@ -832,6 +840,7 @@ void Renderer2D::Flush() {
     stats_.vertices /= 3;
     im.vertices.clear();
     im.indices.clear();
+    im.vertexOverflow = false;
     im.calls.clear();
 }
 

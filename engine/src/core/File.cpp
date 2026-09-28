@@ -31,6 +31,7 @@ namespace {
 
 FileSystem* g_fs = nullptr;
 std::string g_assetRoot;
+std::string g_defaultAssetRoot;
 std::string g_userRoot;
 
 std::string ExecutablePathFallback();
@@ -190,6 +191,7 @@ public:
     }
 
     bool WriteFile(const std::string& path, const void* data, usize size) override {
+        if (size > 0 && data == nullptr) return false;
         std::string resolved = ResolveWritePath(path);
         if (resolved.empty()) return false;
         std::error_code ec;
@@ -378,7 +380,10 @@ FileSystem& FS() {
 
 void SetAssetRoot(const std::string& root) { g_assetRoot = PathNormalize(root); }
 const std::string& GetAssetRoot() {
-    if (g_assetRoot.empty()) g_assetRoot = DefaultAssetRoot();
+    if (g_assetRoot.empty()) {
+        if (g_defaultAssetRoot.empty()) g_defaultAssetRoot = DefaultAssetRoot();
+        g_assetRoot = g_defaultAssetRoot;
+    }
     return g_assetRoot;
 }
 void SetUserRoot(const std::string& root) {
